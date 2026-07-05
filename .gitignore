@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+.coverage
+coverage.xml
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Data / artifacts (source PDFs and DB volumes are not committed)
+data/
+*.pdf
+*.sqlite
+*.duckdb
+*.parquet
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
