@@ -24,12 +24,6 @@ Supporting terminology is in **[docs/GLOSSARY.md](docs/GLOSSARY.md)**.
 
 Company/ASIC ownership data · authoritative counterparty→company resolution · any published multi-hop connection · graph database & visualisation · MCP server · commercial tiers/SLAs.
 
-## Prior art in this workspace (reuse, don't reinvent)
-
-- `../register-watch`, the direct antecedent: canonical Postgres schema, AU data-sources map, change-detection, LLM usage, public-API, licensing strategy, Dagster scaffold.
-- `../politico-coi-poc`, working Postgres + pgvector + FastAPI prototype with provenance and SQL conflict rules (the recursive-CTE engine is the **v2** connections layer).
-- `../uk-ptp`, full-stack UK transparency platform; architectural reference for the eventual v2 shape.
-
 ## License
 
 TBD, leaning toward an open data licence (e.g. CC BY 4.0) for the dataset/exports. See PRD "Open items".

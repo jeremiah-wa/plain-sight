@@ -3,7 +3,6 @@
 **Version:** 1.0
 **Date:** 2026-07-05
 **Status:** Ready for build (v1 scope)
-**Antecedent:** This project is a rebrand and disciplined reboot of the prior `register-watch` (a.k.a. "RegisterWatch") planning work and the `politico-coi-poc` prototype. Where this PRD diverges from those, this PRD wins (see [Further Notes](#further-notes)).
 
 ---
 
@@ -111,7 +110,7 @@ Plain Sight is deliberately architected so that a **v2 connections layer** (join
 - **Append-only + bitemporal.** No destructive updates. Every fact is a `declaration_event` row that is never mutated. Corrections and changes are **new superseding events**.
 - **Two time axes:** *valid time* (`valid_from` / `valid_to`, from the register's effective dates) and *record/transaction time* (`recorded_at` = filing date on the page; `ingested_at`, `verified_at`). "Current state" and "state as of date D" are **SQL views over the event log**, not stored tables.
 - **Per-claim provenance.** Every `declaration_event` carries a provenance pointer: `{document_id, page, bbox?, extraction_method, extraction_confidence, fetch_timestamp}` plus verification metadata: `{verification_status, verified_by, verified_at}`. Provenance is per-claim, **not** per-document.
-- **Temporal integrity constraint.** Use Postgres range types (`daterange`/`tstzrange`) and `EXCLUDE USING GIST` constraints to prevent overlapping validity per entity, following the schema already drafted in `register-watch/docs/planning/03-data-model.md`.
+- **Temporal integrity constraint.** Use Postgres range types (`daterange`/`tstzrange`) and `EXCLUDE USING GIST` constraints to prevent overlapping validity per entity.
 - **Opaque UUID primary keys**, never exposed sequential IDs, so the public API/exports are stable and non-enumerable.
 
 ### Entities & entity resolution
@@ -137,7 +136,7 @@ Plain Sight is deliberately architected so that a **v2 connections layer** (join
 
 ### Ingestion & freshness
 
-- **Sources:** House per-member register index and Senate tabled volumes on aph.gov.au (per `register-watch/docs/planning/02-data-sources.md`); OpenAustralia's mirror as a documented fallback with attribution.
+- **Sources:** House per-member register index and Senate tabled volumes on aph.gov.au; OpenAustralia's mirror as a documented fallback with attribution.
 - **Change detection:** scheduled poll (daily-ish is ample; updates are ~monthly around sitting weeks). Store content hash + page count per member PDF; a hash change or page-count increase flags that member for re-extraction. Then diff at the **claim level** and produce **supersession events** for the delta.
 - **Original PDFs stored immutably** as the provenance anchor.
 - **Freshness is surfaced, not promised.** No freshness SLA. The public commitment is *honesty* ("we never publish an unverified claim; here is how stale each claim is"), not *speed*. Show "source last checked / source last changed / last verified" per member.
@@ -173,9 +172,9 @@ MCP server; ASIC/company ownership data; authoritative counterparty→company re
 
 ### Proposed seams (fewest, highest possible, for confirmation)
 
-1. **Ingestion/extraction seam (primary):** `raw source document (fixture) → normalised candidate declaration_event[]`. This is the highest-value seam: a pure-ish function from a stored document to structured candidates with provenance, testable with fixtures and a mocked model boundary. Prior art: `politico-coi-poc/tests/test_ingest_mapping.py`.
-2. **Temporal/query seam:** `event log (seeded) → state-as-of-date view`. Test the bitemporal SQL views/queries directly against a seeded Postgres, following the SQL-test style already used in `politico-coi-poc/tests/test_rule_a_sqltest.py` / `test_rule_b_sqltest.py`.
-3. **Public read/export seam:** `seeded DB → CSV/Datasette/API response`. Assert that only `verified` claims are exposed, that family members appear as role-based signals (never names, except logged editorial overrides), that every claim carries a source link and freshness dates. Prior art: `politico-coi-poc/tests/test_api.py`.
+1. **Ingestion/extraction seam (primary):** `raw source document (fixture) → normalised candidate declaration_event[]`. This is the highest-value seam: a pure-ish function from a stored document to structured candidates with provenance, testable with fixtures and a mocked model boundary.
+2. **Temporal/query seam:** `event log (seeded) → state-as-of-date view`. Test the bitemporal SQL views/queries directly against a seeded Postgres.
+3. **Public read/export seam:** `seeded DB → CSV/Datasette/API response`. Assert that only `verified` claims are exposed, that family members appear as role-based signals (never names, except logged editorial overrides), that every claim carries a source link and freshness dates.
 4. **Change-detection seam:** `(previous document hash/state, new document) → set of supersession events`. Assert that an appended alteration page yields the correct delta and supersession, and that an unchanged document yields no work.
 
 Prefer these existing-style seams over new ones. The privacy rule (story 21–24) and the "verified-only" rule (story 9) are the highest-risk behaviours and must each have a dedicated test at the public read/export seam.
@@ -192,7 +191,7 @@ Ingestion/extraction mapping; bitemporal query views; change-detection/supersess
 - **Company / ASIC ownership ingestion** and **authoritative counterparty resolution** (v2, data is paywalled in AU).
 - **Graph database, graph visualisation, and MCP server** (v2+).
 - **State and territory** parliaments, and **non-AU** jurisdictions (schema supports them; adapters not built).
-- **Commercial tiers, ARR targets, enterprise SLAs, 99.9% uptime**, explicitly rejected for v1 in favour of a solo-sustainable, honesty-not-speed posture (this reverses the `register-watch` executive-summary commercial framing).
+- **Commercial tiers, ARR targets, enterprise SLAs, 99.9% uptime**, explicitly rejected for v1 in favour of a solo-sustainable, honesty-not-speed posture.
 - **Voting-record / committee correlation** (valuable, but a later enrichment once the core dataset exists).
 - **Fully automated publication** (rejected, human verification on every published claim is a hard v1 constraint).
 
@@ -200,30 +199,24 @@ Ingestion/extraction mapping; bitemporal query views; change-detection/supersess
 
 ## Further Notes
 
-### Relationship to prior work (reuse, don't reinvent)
+### Design posture (the non-negotiables)
 
-The user has built the UK-flavoured version of this several times. Reuse where possible:
+These are the principles that keep Plain Sight honest and solo-sustainable. Everything above serves them:
 
-- **`register-watch/docs/planning/`**, the closest antecedent. Its **canonical Postgres schema** (`03-data-model.md`), **AU data-sources map and change-detection** (`02-data-sources.md`), **LLM-usage** (`05-llm-usage.md`), **public-API** (`06-public-api.md`), **licensing strategy** (`13-licensing-strategy.md`), and **roadmap** (`12-implementation-roadmap.md`) are directly reusable starting points for Plain Sight. Its Dagster ingestion scaffold (`register-watch/dagster/`) is a candidate base for the monitoring loop.
-- **`politico-coi-poc`**, a working Postgres + pgvector + FastAPI prototype with provenance tracking, embedding-based matching, and SQL recursive-CTE conflict rules. Reuse its provenance patterns and its SQL-test style; its recursive-CTE path detection is the **v2** connections engine, not v1.
-- **`uk-ptp`**, the full-stack UK transparency platform (Dagster/dbt/FastAPI/Next.js/Postgres). Architectural reference for the eventual v2 shape; do not port wholesale into the solo v1.
-
-### Key divergences this PRD makes from `register-watch`
-
-1. **Solo, not commercial-grade.** RegisterWatch's executive summary targets $240k ARR, 99.9% SLA, enterprise tiers. Plain Sight v1 is a **solo, cheap-to-run, no-SLA** project. Design objective: *minimise human-minutes per week*, not maximise infra guarantees.
-2. **Mirrored facts only in v1.** Sharpen the Type A / Type B split: publish nothing inferred in v1.
-3. **Counterparties stay provisional strings.** Do not resolve to ACN/legal entities until v2, when it can be human-confirmed with provenance.
-4. **Family-privacy minimisation** ("publish the signal, minimise the person", role-only for minors, editorial override for genuinely-public-figure family) is a first-class v1 requirement.
-5. **Corrections posture:** private intake + public supersession ledger + "mirror the source error and flag the dispute" + no-takedown-for-faithful-mirroring, favoured over RegisterWatch's heavy "maximum legal protection" interstitial/disclaimer framing. A lightweight disclaimer is fine; a mandatory legal interstitial is not the trust model we chose.
+1. **Solo and cheap by design.** No commercial tiers, no ARR target, no uptime SLA. The design objective is to *minimise human-minutes per week*, not to maximise infrastructure guarantees. LLM extraction and Postgres are near-free; the only scarce resource is the operator's time, so the pipeline automates everything except the final human confirm.
+2. **Mirrored facts only in v1.** Publish what a member declared; publish nothing inferred until it can be human-confirmed with provenance in v2.
+3. **Counterparties stay provisional strings.** Do not resolve a declared name to a specific legal entity (e.g. an ACN) in v1; that is an inference with defamation risk and no free authoritative register to verify against.
+4. **Privacy: minimise the person.** Publish the household conflict signal ("spouse holds X") with role, not the third party's name; role-only for minors; names only via a logged editorial override when the person's own public role is materially in the public interest.
+5. **Never silently edit history.** Corrections are append-only supersessions; the audit trail is as much about auditing Plain Sight as auditing politicians. Private intake, public corrections ledger, mirror-the-source-error-and-flag-the-dispute, no takedown for faithful mirroring.
 
 ### Open items to resolve before launch (not blocking the build)
 
-- **Licensing.** Lean toward an **open data licence (e.g. CC BY 4.0) for the dataset/exports**, matching mySociety and maximising civic reuse, this is a conscious re-think of RegisterWatch's AGPL+CLA "maximum protection" stance. Confirm aph.gov.au copyright terms and OpenAustralia reuse terms for mirrored scans/links. (~20-min research task.)
+- **Licensing.** Lean toward an **open data licence (e.g. CC BY 4.0) for the dataset/exports** to maximise civic reuse. Confirm aph.gov.au copyright terms and OpenAustralia reuse terms for mirrored scans/links. (~20-min research task.)
 - **Extraction QA metric.** Define how model accuracy is measured against accumulated human corrections; decides when (if ever) review could be relaxed. v2-ish.
 
 ### First build order (solo, ship-oriented)
 
-1. Lock the **bitemporal event + provenance schema** first (expensive to retrofit), start from `register-watch/docs/planning/03-data-model.md`.
+1. Lock the **bitemporal event + provenance schema** first (expensive to retrofit).
 2. Do **one member end-to-end** manually (download → extract → verify → store → display) before automating anything.
 3. Build the **verification UI** (scan crop beside extracted fields), the trust factory.
 4. **Backfill the 48th parliament**; publish read-only Datasette + CSV with source links and freshness dates.
