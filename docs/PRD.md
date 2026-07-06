@@ -28,7 +28,7 @@ For **v1**, Plain Sight:
 - Ingests the per-member PDFs from the official registers, extracts each declared interest with a multimodal LLM, and **has a human confirm every claim before it is published**.
 - Publishes only **mirrored facts** ("as declared by the member"), never inferred connections. It is a faithful mirror of the official record, not an accusation engine.
 - Stores every claim as an **immutable, bitemporal declaration event** with **per-claim provenance** (source document + page + region + extraction method + confidence + who verified it and when).
-- Presents the data as a **simple, read-only, searchable web view plus flat data exports (CSV/Parquet, Datasette-style)**, with a **source link and freshness dates on every claim**.
+- Presents the data as a **simple, read-only, searchable web view plus flat data exports (CSV/Parquet)**, with a **source link and freshness dates on every claim**.
 - Runs a **cheap, mostly-automated monitoring loop** that detects when a member's register changes and queues only the delta for human review.
 - Provides a **corrections process**: a private intake channel, corrections applied as append-only supersession events, and a **public corrections ledger**.
 
@@ -104,6 +104,15 @@ Plain Sight is deliberately architected so that a **v2 connections layer** (join
 - **Type A only in v1.** Plain Sight publishes **mirrored facts** ("as declared") and never publishes **inferred connections** (Type B). Inference may run internally as a private signal for editorial lead-generation, but nothing inferred is published in v1.
 - **Jurisdiction:** Australia federal (House + Senate) for v1. The canonical schema is jurisdiction-agnostic (via a `jurisdiction` field and per-source adapters) so UK/state expansion is possible later, but only the AU adapter is built in v1.
 
+### Technical architecture & deployment (v1 realization)
+
+- **One language for the spine: Python 3.12+.** Every logic-bearing part (ingestion, extraction, bitemporal queries, publish/export, monitoring loop) is Python, to minimise the operator's context-switching. The design converges on Python because every hard part (multimodal LLM, pgvector, Parquet, the read layer) is Python-native; it is not a scale problem, so no compiled/second language is warranted. Earlier Node scaffolding is dropped; there is **no JS framework in v1**.
+- **Single installable Python package**, not a multi-package monorepo. Modules mirror the four test seams (`sources` / `extraction` / `monitoring` / `publish`) plus `domain`, `db`, and `web`, so *module ↔ seam ↔ test ↔ issue* line up one-to-one.
+- **Database access: `psycopg` (v3) + hand-written SQL, no ORM.** The bitemporal core (`daterange`/`tstzrange`, `EXCLUDE USING GIST`, "state as of D" views) is exactly where an ORM obscures the behaviour the tests must assert, so temporal logic is raw SQL. **Pydantic** validates domain types at the boundaries only, not as a persistence layer. Schema changes are **hand-authored, versioned SQL migrations** (no autogenerate: it cannot see GIST constraints or views).
+- **Verification UI: FastAPI + minimal HTMX**, server-rendered with Jinja2, **operator-only** and run locally. A richer JS/SPA frontend is explicitly deferred; the UI is validated by testing the read/write seam beneath it, not by UI tests.
+- **Extraction model: Claude Opus (multimodal), behind a narrow, mockable `Extractor` seam.** Handwriting and error-prone effective dates make accuracy dominate, and the corpus is tiny, so premium per-page cost is negligible: optimise extraction *accuracy*, not cost. The Anthropic call lives *only* behind the `Extractor` interface (model id is config), so tests mock that boundary and assert normalisation/provenance deterministically. Structured output / tool-use forces the candidate schema; no free-text parsing. `bbox` provenance is **optional and operator-assisted** (the model returns the page; it never fabricates pixel coordinates).
+- **Deployment (cheap, mostly-serverless):** managed Postgres with pgvector (e.g. Neon or Supabase free tier) as the durable, cloud-reachable **system of record**; **GitHub Actions cron** drives the monitoring loop (poll → hash/page-count diff → re-extract changed pages → queue delta); the **verification UI runs locally** against that Postgres; the **publish step pushes static artifacts to a free static host**. No always-on server of our own, and **no public-facing backend**.
+
 ### Data model (system of record)
 
 - **Storage:** PostgreSQL as the single system of record, with **pgvector** for embeddings. **No graph database in v1.** A graph is a v2 concern and will be introduced as a *derived projection* built from Postgres, not as a second source of truth.
@@ -116,8 +125,9 @@ Plain Sight is deliberately architected so that a **v2 connections layer** (join
 ### Entities & entity resolution
 
 - **Politicians: hard resolution.** Parliamentarians are canonical `Person` entities linked to external authority IDs (Parliament member IDs, OpenAustralia IDs, Wikidata QIDs where available). `canonical_name` + `name_variants`. This enables "same member across parliaments" and future joins to voting records.
-- **Declared counterparties: provisional strings only.** A company/trust/asset named in a declaration is stored as the **raw transcribed string + a normalised label**, grouped by **soft clustering**, and explicitly marked **unresolved/provisional**. Plain Sight does **not** assert a legal identity (e.g. an ACN) for a counterparty in v1, because there is no free authoritative register to verify against and asserting a specific legal entity would be an inference (Type B) with defamation risk. Display is always *"as declared: '<string>'"*.
-- **Family members: canonical but private-internal by default.** Spouses/dependents are modelled as `Person` entities so the household→interest link is preserved for v2 tracing, but they are **not public** by default. Public display uses the **role + signal** ("spouse holds X"), never the name.
+- **Declared counterparties: provisional strings, but first-class entities.** A company/trust/asset named in a declaration is a **first-class entity with a stable opaque UUID** (raw transcribed string + normalised label + embedding), **referenced** by declaration events, **never inlined** as a bare string. It is explicitly marked **unresolved/provisional**. Plain Sight does **not** assert a legal identity (e.g. an ACN) for a counterparty in v1, because there is no free authoritative register to verify against and asserting a specific legal entity would be an inference (Type B) with defamation risk. Display is always *"as declared: '<string>'"*.
+- **No materialised counterparty clustering in v1.** "Find declarations related to company X" (story 2) is served by **pgvector similarity at query time**, not by a stored cluster entity or a clustering pipeline (which is unstable and edges toward Type-B inference). The stable counterparty UUID is the **v2 anchor**: v2 clustering and authoritative resolution attach as *appended events against that UUID*, and the v2 graph is a *derived projection* over them, so the v1 core is never re-modelled.
+- **Family members: canonical but private-internal by default.** Spouses/dependents are modelled as `Person` entities, and the **household→member relationship is an explicit (private) edge**, so the MP → household → counterparty chain is preserved for v2 tracing. They are **not public** by default: public display uses the **role + signal** ("spouse holds X"), never the name.
 - **Authoritative counterparty resolution (declared string → real company, with confidence + provenance + human confirmation) is a defining v2 task**, modelled as an appended `resolution_event` so the audit trail extends naturally.
 
 ### Extraction pipeline
@@ -131,7 +141,7 @@ Plain Sight is deliberately architected so that a **v2 connections layer** (join
 
 ### Retrieval
 
-- **Vectors are for retrieval and entity-assist, not generation.** pgvector powers (a) semantic/fuzzy search over declaration text and (b) counterparty clustering/entity-resolution assist. Hybrid semantic + structured + temporal filtering happens in one SQL layer.
+- **Vectors are for retrieval and entity-assist, not generation.** pgvector powers (a) semantic/fuzzy search over declaration text and (b) **counterparty similarity at query time** (no materialised clusters in v1). Hybrid semantic + structured + temporal filtering happens in one SQL layer.
 - **The system returns cited records, never generated prose that asserts new facts.** This is a hard rule: the whole value proposition is faithfulness, so no LLM-synthesised claims are surfaced as data.
 
 ### Ingestion & freshness
@@ -144,7 +154,7 @@ Plain Sight is deliberately architected so that a **v2 connections layer** (join
 
 ### Corrections & disputes
 
-- **Intake is private** (email + simple no-login web form) so subjects can report errors, including sensitive/family details or legal correspondence, without posting them publicly.
+- **Intake is private** (email + simple no-login web form) so subjects can report errors, including sensitive/family details or legal correspondence, without posting them publicly. Because the public site is **static (no backend of ours)**, the form submits to a **third-party form endpoint** (or a small serverless function) that forwards to a **dedicated intake inbox**; that inbox (optionally mirrored to a private table) is the retained-correspondence store. This is the *opposite* direction from the public corrections **ledger**, which is static-generated from Postgres supersessions at publish time.
 - **A `dispute` state on claims:** credible disputes are publicly flagged *"disputed, under review"* (with the nature of the dispute) rather than hidden. Transparency about uncertainty is the trust feature.
 - **Corrections are supersession events, never deletions.** The prior (wrong) version stays in the log, marked superseded, with who/why/when. Plain Sight must never silently edit its own history.
 - **Public corrections ledger:** every resolved correction is published (what was claimed, what changed, why, when). GitHub issues/repo is an acceptable home for *this public ledger*, but **not** for intake.
@@ -153,8 +163,9 @@ Plain Sight is deliberately architected so that a **v2 connections layer** (join
 
 ### Presentation (v1)
 
-- **Read-only public web view:** search/filter by member, party, chamber, category; "as declared" strings; per-claim source links; verification status; freshness dates. Static-site-friendly; no login; no graph; no agent interface.
-- **Flat data exports:** CSV/Parquet + a Datasette-style browsable read layer, mirroring mySociety's approach for credibility and interoperability.
+- **Static-generation-first public site.** Because the corpus is tiny and changes ~monthly, the public view is **pre-rendered, not served from a live query engine**. A **publish step** reads Postgres and emits, in one pass: sanitised static HTML (Jinja2, reusing the verification-UI templates), a client-side **Pagefind** search index, a downloadable **SQLite** file, and **CSV/Parquet** exports. Search/filter by member, party, chamber, category; "as declared" strings; per-claim source links; verification status; freshness dates. No login; no graph; no agent interface; no runtime server facing the public.
+- **The publish step is the privacy/verified-only gate.** Only `verified`, privacy-minimised rows are written into the published artifacts, so unverified or sensitive rows are **physically absent** from the public output, not merely filtered by a query. This is the single enforcement point for verified-only (story 9) and minimise-the-person (stories 21–24). Public data is as fresh as the last publish run (consistent with "freshness surfaced, not promised").
+- **Flat data exports** (CSV/Parquet) mirror mySociety's approach for credibility and interoperability. **Datasette is optional and deferred:** the "ad-hoc SQL browse" story (14) is satisfied later by pointing Datasette at the already-published SQLite; it is not a v1 launch dependency.
 
 ### Explicitly deferred to v2+ (built so as not to preclude)
 
@@ -174,7 +185,7 @@ MCP server; ASIC/company ownership data; authoritative counterparty→company re
 
 1. **Ingestion/extraction seam (primary):** `raw source document (fixture) → normalised candidate declaration_event[]`. This is the highest-value seam: a pure-ish function from a stored document to structured candidates with provenance, testable with fixtures and a mocked model boundary.
 2. **Temporal/query seam:** `event log (seeded) → state-as-of-date view`. Test the bitemporal SQL views/queries directly against a seeded Postgres.
-3. **Public read/export seam:** `seeded DB → CSV/Datasette/API response`. Assert that only `verified` claims are exposed, that family members appear as role-based signals (never names, except logged editorial overrides), that every claim carries a source link and freshness dates.
+3. **Public read/export seam (the publish gate):** `seeded Postgres → published artifacts (static HTML / SQLite / CSV/Parquet)`. Assert that only `verified` claims are exposed, that family members appear as role-based signals (never names, except logged editorial overrides), that every claim carries a source link and freshness dates. Because this seam is an export (non-public rows are physically absent), the assertions run against the emitted artifacts, not a live query.
 4. **Change-detection seam:** `(previous document hash/state, new document) → set of supersession events`. Assert that an appended alteration page yields the correct delta and supersession, and that an unchanged document yields no work.
 
 Prefer these existing-style seams over new ones. The privacy rule (story 21–24) and the "verified-only" rule (story 9) are the highest-risk behaviours and must each have a dedicated test at the public read/export seam.
@@ -217,7 +228,7 @@ These are the principles that keep Plain Sight honest and solo-sustainable. Ever
 ### First build order (solo, ship-oriented)
 
 1. Lock the **bitemporal event + provenance schema** first (expensive to retrofit).
-2. Do **one member end-to-end** manually (download → extract → verify → store → display) before automating anything.
+2. Do **one member end-to-end** manually (download → extract → verify → store → display) before automating anything. This is a **walking skeleton**: the "verify" step here is a **crude CLI/manual confirm**, not the real UI, so the pipeline connects end-to-end before UI investment.
 3. Build the **verification UI** (scan crop beside extracted fields), the trust factory.
-4. **Backfill the 48th parliament**; publish read-only Datasette + CSV with source links and freshness dates.
+4. **Backfill the 48th parliament**; run the **publish step** to a static site (Jinja2 + Pagefind) + CSV/Parquet, with source links and freshness dates.
 5. **Then** turn on the cheap monitoring loop.

@@ -16,13 +16,17 @@ Supporting terminology is in **[docs/GLOSSARY.md](docs/GLOSSARY.md)**.
 - Ingest the House and Senate registers of interests (aph.gov.au).
 - Extract each declared interest with a multimodal LLM; **a human verifies every claim before publication**.
 - Store claims as **immutable, bitemporal declaration events** with **per-claim provenance**.
-- Publish a **read-only searchable web view + flat data exports (CSV/Parquet, Datasette-style)**.
+- Publish a **static, read-only searchable web view + flat data exports (CSV/Parquet)**, produced by a one-way publish step (Datasette browse deferred).
 - Run a **cheap monitoring loop** that detects register changes and queues only the delta for review.
 - Provide **corrections**: private intake, append-only supersession, public corrections ledger.
 
 ## What v1 is not (deferred to v2+)
 
 Company/ASIC ownership data · authoritative counterparty→company resolution · any published multi-hop connection · graph database & visualisation · MCP server · commercial tiers/SLAs.
+
+## How it's built (v1)
+
+**Built with:** Python 3.12 · FastAPI + minimal HTMX (operator-only verification UI) · Postgres + pgvector (private system of record, raw SQL, no ORM) · Claude Opus (multimodal extraction, behind a mockable seam) · a one-way publish step (Jinja2 + Pagefind) to a free static host · GitHub Actions cron for the monitoring loop. No public-facing backend; the static site is as fresh as the last publish run.
 
 ## License
 
