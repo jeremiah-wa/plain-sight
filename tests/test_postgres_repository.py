@@ -1,56 +1,40 @@
 """End-to-end against a real Postgres, to validate the migration and raw SQL.
 
-Opt-in: set ``PLAIN_SIGHT_TEST_DATABASE_URL`` to a reachable, disposable
-database. The test creates the skeleton schema, drives the pipeline through the
-``PostgresRepository``, asserts the verified-only display, and drops the tables.
+Opt-in via the shared ``postgres_conn`` fixture (see ``conftest.py``): set
+``PLAIN_SIGHT_TEST_DATABASE_URL`` to a reachable, disposable database. The test
+drives the pipeline through the ``PostgresRepository`` and asserts the
+verified-only display.
 """
 
 from __future__ import annotations
 
-import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import psycopg
 import pytest
 
 from plain_sight import service
-from plain_sight.db import PostgresRepository, apply_migrations
+from plain_sight.db import PostgresRepository
 from plain_sight.domain import CandidateDeclaration, ExtractionResult, InterestCategory
 from plain_sight.extraction import StubExtractor
 from plain_sight.sources import DocumentStore
 
 pytestmark = pytest.mark.postgres
 
-_TABLES = "declaration_event, source_document, counterparty, person, schema_migrations"
 NOW = datetime(2026, 7, 8, 12, 0, tzinfo=UTC)
 
 
-@pytest.fixture
-def conn() -> Iterator[psycopg.Connection[object]]:
-    url = os.environ.get("PLAIN_SIGHT_TEST_DATABASE_URL")
-    if not url:
-        pytest.skip("Set PLAIN_SIGHT_TEST_DATABASE_URL to run the Postgres test")
-    connection = psycopg.connect(url)
-    try:
-        connection.execute(f"DROP TABLE IF EXISTS {_TABLES} CASCADE")
-        connection.commit()
-        apply_migrations(connection)
-        yield connection
-    finally:
-        connection.execute(f"DROP TABLE IF EXISTS {_TABLES} CASCADE")
-        connection.commit()
-        connection.close()
-
-
 def test_postgres_pipeline_displays_only_verified(
-    conn: psycopg.Connection[object],
+    postgres_conn: psycopg.Connection[Any],
     tmp_path: Path,
     sample_pdf_bytes: bytes,
     id_factory: Callable[[], UUID],
 ) -> None:
+    conn = postgres_conn
     repo = PostgresRepository(conn)
     store = DocumentStore(tmp_path)
     extractor = StubExtractor(
@@ -73,7 +57,7 @@ def test_postgres_pipeline_displays_only_verified(
         )
     )
 
-    with conn:
+    with conn.transaction():
         events = service.ingest(
             repo=repo,
             store=store,
@@ -85,7 +69,7 @@ def test_postgres_pipeline_displays_only_verified(
         )
 
     shareholding = next(e for e in events if e.category is InterestCategory.SHAREHOLDING)
-    with conn:
+    with conn.transaction():
         assert repo.verify_event(shareholding.id, verified_by="operator", verified_at=NOW)
 
     claims = repo.verified_events_for_member(events[0].member_id)
