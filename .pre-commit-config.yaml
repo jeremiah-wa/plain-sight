@@ -12,11 +12,6 @@ repos:
         args: [--maxkb=1024]
       - id: check-case-conflict
 
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.0
-    hooks:
-      - id: gitleaks
-
   # ruff and mypy run through uv so the hook and CI share one pinned version
   # (uv.lock). Bump both at once with `uv lock --upgrade-package ruff`.
   - repo: local

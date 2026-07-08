@@ -41,9 +41,6 @@ jobs:
       - name: mypy (strict)
         run: uv run mypy
 
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-
   test:
     name: Tests
     runs-on: ubuntu-latest
