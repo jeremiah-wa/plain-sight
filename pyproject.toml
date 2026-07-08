@@ -1,0 +1,64 @@
+[project]
+name = "plain-sight"
+version = "0.1.0"
+description = "Australian federal politicians' declared interests, structured, searchable, sourced, and honest."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.6",
+    "psycopg[binary]>=3.1",
+    "click>=8.1",
+    "pypdf>=4.0",
+]
+
+[project.optional-dependencies]
+# The live multimodal extractor. Never imported by the test suite: the Extractor
+# seam is mocked, so extraction is asserted deterministically without the SDK.
+llm = [
+    "anthropic>=0.40",
+]
+
+[project.scripts]
+plain-sight = "plain_sight.cli:cli"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.9",
+    "ruff>=0.4",
+    "pre-commit>=4.6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/plain_sight"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "postgres: end-to-end test that requires a reachable Postgres (set PLAIN_SIGHT_TEST_DATABASE_URL)",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+
+# The live extractor is behind the optional `llm` extra and never imported by
+# the test suite, so `anthropic` need not be installed to type-check the core.
+[[tool.mypy.overrides]]
+module = ["anthropic.*"]
+ignore_missing_imports = true
