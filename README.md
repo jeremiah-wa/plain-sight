@@ -8,8 +8,7 @@ Politicians' financial interests *are* disclosed, as per-member scanned (often h
 
 ## Status
 
-Pre-build. The v1 scope, data model, and decisions are specified in **[docs/PRD.md](docs/PRD.md)**.
-Supporting terminology is in **[docs/GLOSSARY.md](docs/GLOSSARY.md)**.
+Early build. A **walking skeleton** runs one member end-to-end (download → store → extract → confirm → display) via a crude operator CLI. The v1 scope, data model, and decisions are specified in **[docs/PRD.md](docs/PRD.md)**; how the system is put together (with diagrams) is in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**; supporting terminology is in **[docs/GLOSSARY.md](docs/GLOSSARY.md)**.
 
 ## What v1 is
 
@@ -27,6 +26,23 @@ Company/ASIC ownership data · authoritative counterparty→company resolution �
 ## How it's built (v1)
 
 **Built with:** Python 3.12 · FastAPI + minimal HTMX (operator-only verification UI) · Postgres + pgvector (private system of record, raw SQL, no ORM) · Claude Opus (multimodal extraction, behind a mockable seam) · a one-way publish step (Jinja2 + Pagefind) to a free static host · GitHub Actions cron for the monitoring loop. No public-facing backend; the static site is as fresh as the last publish run.
+
+For the module/seam layout, data model, and deployment (with mermaid diagrams), see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+
+## Running the skeleton
+
+The code is a single installable package (`plain_sight`) with a crude operator CLI that stands in for the real verification UI. It needs a reachable Postgres (`PLAIN_SIGHT_DATABASE_URL`); extraction runs against the live model only with the `llm` extra installed and an Anthropic key, otherwise the `Extractor` seam is stubbed in tests.
+
+```bash
+uv sync                                   # install (add --extra llm for the live extractor)
+uv run plain-sight migrate                # apply hand-authored SQL migrations
+uv run plain-sight ingest --member "Jane Doe" --pdf register.pdf --url <source-url>
+uv run plain-sight confirm <event-id> --by "operator"
+uv run plain-sight show --member "Jane Doe"
+uv run pytest                             # deterministic tests; -m postgres needs PLAIN_SIGHT_TEST_DATABASE_URL
+```
+
+Every extracted claim starts `pending`; only `confirm` makes it `verified`, and `show` renders verified claims only.
 
 ## License
 
