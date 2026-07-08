@@ -30,9 +30,11 @@ from plain_sight.domain import (
 class PostgresRepository:
     """A :class:`~plain_sight.db.repository.Repository` backed by Postgres.
 
-    Does not manage transactions itself: the caller wraps a unit of work in a
-    ``with conn.transaction():`` block so an ingest is atomic. Reads and
-    single-row writes work the same either way.
+    Does not manage transactions itself: the caller wraps a unit of work in
+    ``with conn:`` so an ingest is atomic. Reads and single-row writes work the
+    same either way. Note that in psycopg 3 ``with conn:`` also *closes* the
+    connection on exit; to run several units of work on one connection, use
+    ``with conn.transaction():`` per unit instead.
     """
 
     def __init__(self, conn: psycopg.Connection[Any]) -> None:
@@ -137,9 +139,7 @@ class PostgresRepository:
             ),
         )
 
-    def verify_event(
-        self, event_id: UUID, *, verified_by: str, verified_at: datetime
-    ) -> bool:
+    def verify_event(self, event_id: UUID, *, verified_by: str, verified_at: datetime) -> bool:
         cursor = self._conn.execute(
             """
             UPDATE declaration_event

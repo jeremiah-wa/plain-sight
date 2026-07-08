@@ -24,9 +24,7 @@ _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 
 @pytest.fixture
-def wired_cli(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> InMemoryRepository:
+def wired_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InMemoryRepository:
     repo = InMemoryRepository()
 
     @contextmanager
@@ -57,9 +55,7 @@ def test_cli_ingest_confirm_show(
     pdf.write_bytes(sample_pdf_bytes)
     runner = CliRunner()
 
-    ingest = runner.invoke(
-        cli_module.cli, ["ingest", "--member", "Jane Member", "--pdf", str(pdf)]
-    )
+    ingest = runner.invoke(cli_module.cli, ["ingest", "--member", "Jane Member", "--pdf", str(pdf)])
     assert ingest.exit_code == 0, ingest.output
     assert "(pending)" in ingest.output
     event_id = _UUID_RE.search(ingest.output).group(0)  # type: ignore[union-attr]
@@ -69,9 +65,7 @@ def test_cli_ingest_confirm_show(
     assert "no verified declared interests" in show_before.output
     assert "BHP" not in show_before.output
 
-    confirm = runner.invoke(
-        cli_module.cli, ["confirm", event_id, "--by", "operator"]
-    )
+    confirm = runner.invoke(cli_module.cli, ["confirm", event_id, "--by", "operator"])
     assert confirm.exit_code == 0, confirm.output
     assert "Verified" in confirm.output
 

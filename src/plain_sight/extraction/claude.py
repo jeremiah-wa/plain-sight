@@ -21,6 +21,7 @@ from plain_sight.domain import (
 
 if TYPE_CHECKING:
     from anthropic import Anthropic
+    from anthropic.types import MessageParam, ToolChoiceToolParam, ToolParam
 
 _TOOL_NAME = "record_declarations"
 
@@ -36,7 +37,7 @@ _INSTRUCTION = (
 )
 
 
-def _tool_schema() -> dict[str, Any]:
+def _tool_schema() -> ToolParam:
     return {
         "name": _TOOL_NAME,
         "description": "Record the declared interests transcribed from the page.",
@@ -88,27 +89,29 @@ class ClaudeExtractor:
 
     def extract(self, document: SourceDocument, content: bytes) -> ExtractionResult:
         pdf_b64 = base64.standard_b64encode(content).decode("ascii")
+        tool_choice: ToolChoiceToolParam = {"type": "tool", "name": _TOOL_NAME}
+        messages: list[MessageParam] = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": pdf_b64,
+                        },
+                    },
+                    {"type": "text", "text": _INSTRUCTION},
+                ],
+            }
+        ]
         message = self._client.messages.create(
             model=self._model_id,
             max_tokens=self._max_tokens,
             tools=[_tool_schema()],
-            tool_choice={"type": "tool", "name": _TOOL_NAME},
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "document",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "application/pdf",
-                                "data": pdf_b64,
-                            },
-                        },
-                        {"type": "text", "text": _INSTRUCTION},
-                    ],
-                }
-            ],
+            tool_choice=tool_choice,
+            messages=messages,
         )
 
         raw = self._tool_input(message)

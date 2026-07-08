@@ -32,9 +32,7 @@ class Repository(Protocol):
 
     def add_declaration_event(self, event: DeclarationEvent) -> None: ...
 
-    def verify_event(
-        self, event_id: UUID, *, verified_by: str, verified_at: datetime
-    ) -> bool:
+    def verify_event(self, event_id: UUID, *, verified_by: str, verified_at: datetime) -> bool:
         """Transition a ``pending`` claim to ``verified``.
 
         Returns ``True`` if a pending event was transitioned, ``False`` if the

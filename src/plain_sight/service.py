@@ -103,9 +103,7 @@ def render_member_interests(*, repo: Repository, member_name: str) -> str:
             f"· confidence {prov.extraction_confidence:.2f}"
         )
         if event.verified_by and event.verified_at:
-            lines.append(
-                f"  verified by {event.verified_by} on {event.verified_at:%Y-%m-%d}"
-            )
+            lines.append(f"  verified by {event.verified_by} on {event.verified_at:%Y-%m-%d}")
     return "\n".join(lines)
 
 
