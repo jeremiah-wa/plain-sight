@@ -12,23 +12,24 @@ repos:
         args: [--maxkb=1024]
       - id: check-case-conflict
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.20
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
-
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.0
-    hooks:
-      - id: gitleaks
-
-  # mypy runs through uv so it sees the project's installed env and uv.lock
-  # versions, matching CI. pass_filenames is off so it type-checks the whole
-  # tree (per pyproject `files`), not just staged files.
+  # ruff and mypy run through uv so the hook and CI share one pinned version
+  # (uv.lock). Bump both at once with `uv lock --upgrade-package ruff`.
   - repo: local
     hooks:
+      - id: ruff
+        name: ruff (lint)
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff (format)
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      # pass_filenames is off so mypy type-checks the whole tree (per pyproject
+      # `files`), not just staged files.
       - id: mypy
         name: mypy (strict)
         entry: uv run mypy

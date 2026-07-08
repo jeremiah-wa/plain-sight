@@ -73,7 +73,7 @@ def test_postgres_pipeline_displays_only_verified(
         )
     )
 
-    with conn:
+    with conn.transaction():
         events = service.ingest(
             repo=repo,
             store=store,
@@ -85,7 +85,7 @@ def test_postgres_pipeline_displays_only_verified(
         )
 
     shareholding = next(e for e in events if e.category is InterestCategory.SHAREHOLDING)
-    with conn:
+    with conn.transaction():
         assert repo.verify_event(shareholding.id, verified_by="operator", verified_at=NOW)
 
     claims = repo.verified_events_for_member(events[0].member_id)

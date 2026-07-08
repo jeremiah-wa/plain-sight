@@ -32,7 +32,9 @@ class PostgresRepository:
 
     Does not manage transactions itself: the caller wraps a unit of work in
     ``with conn:`` so an ingest is atomic. Reads and single-row writes work the
-    same either way.
+    same either way. Note that in psycopg 3 ``with conn:`` also *closes* the
+    connection on exit; to run several units of work on one connection, use
+    ``with conn.transaction():`` per unit instead.
     """
 
     def __init__(self, conn: psycopg.Connection[Any]) -> None:
