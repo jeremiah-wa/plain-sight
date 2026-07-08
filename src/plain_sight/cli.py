@@ -27,9 +27,7 @@ from plain_sight.sources import DocumentStore
 
 def _require_database_url(settings: Settings) -> str:
     if not settings.database_url:
-        raise click.ClickException(
-            "Set PLAIN_SIGHT_DATABASE_URL to a reachable Postgres instance."
-        )
+        raise click.ClickException("Set PLAIN_SIGHT_DATABASE_URL to a reachable Postgres instance.")
     return settings.database_url
 
 

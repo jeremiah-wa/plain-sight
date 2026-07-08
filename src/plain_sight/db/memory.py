@@ -42,9 +42,7 @@ class InMemoryRepository:
     def add_declaration_event(self, event: DeclarationEvent) -> None:
         self._events[event.id] = event
 
-    def verify_event(
-        self, event_id: UUID, *, verified_by: str, verified_at: datetime
-    ) -> bool:
+    def verify_event(self, event_id: UUID, *, verified_by: str, verified_at: datetime) -> bool:
         event = self._events.get(event_id)
         if event is None or event.verification_status is not VerificationStatus.PENDING:
             return False

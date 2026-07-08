@@ -137,9 +137,7 @@ class PostgresRepository:
             ),
         )
 
-    def verify_event(
-        self, event_id: UUID, *, verified_by: str, verified_at: datetime
-    ) -> bool:
+    def verify_event(self, event_id: UUID, *, verified_by: str, verified_at: datetime) -> bool:
         cursor = self._conn.execute(
             """
             UPDATE declaration_event
