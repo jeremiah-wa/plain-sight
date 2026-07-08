@@ -30,9 +30,9 @@ from plain_sight.domain import (
 class PostgresRepository:
     """A :class:`~plain_sight.db.repository.Repository` backed by Postgres.
 
-    Does not manage transactions itself: the caller wraps a unit of work in
-    ``with conn:`` so an ingest is atomic. Reads and single-row writes work the
-    same either way.
+    Does not manage transactions itself: the caller wraps a unit of work in a
+    ``with conn.transaction():`` block so an ingest is atomic. Reads and
+    single-row writes work the same either way.
     """
 
     def __init__(self, conn: psycopg.Connection[Any]) -> None:
@@ -106,12 +106,12 @@ class PostgresRepository:
             """
             INSERT INTO declaration_event
                 (id, member_id, counterparty_id, category, description,
-                 valid_from, valid_to,
+                 validity,
                  document_id, page, extraction_method, extraction_confidence,
                  fetch_timestamp, bbox,
                  verification_status, verified_by, verified_at, ingested_at)
             VALUES (%s, %s, %s, %s, %s,
-                    %s, %s,
+                    daterange(%s, %s, '[)'),
                     %s, %s, %s, %s,
                     %s, %s,
                     %s, %s, %s, %s)
@@ -156,7 +156,7 @@ class PostgresRepository:
         rows = self._conn.execute(
             """
             SELECT de.id, de.member_id, de.counterparty_id, de.category, de.description,
-                   de.valid_from, de.valid_to,
+                   lower(de.validity), upper(de.validity),
                    de.document_id, de.page, de.extraction_method, de.extraction_confidence,
                    de.fetch_timestamp, de.bbox,
                    de.verification_status, de.verified_by, de.verified_at, de.ingested_at,
