@@ -179,8 +179,8 @@ erDiagram
         uuid member_id FK
         uuid counterparty_id FK
         text category
-        date valid_from
-        date valid_to
+        daterange validity
+        uuid superseded_by FK
         uuid document_id FK
         int page
         float extraction_confidence
@@ -193,19 +193,21 @@ erDiagram
 Key modelling decisions:
 
 - **`declaration_event` is the atomic unit of record.** Immutable claim content; verification is a state transition on the row. Provenance is carried per-claim, inline on the event.
+- **Valid time is a single half-open `daterange` (`validity`), guarded by a database constraint.** An `EXCLUDE USING GIST` constraint (`declaration_event_no_active_overlap`) makes it *impossible* for two active events to claim overlapping validity for the same `(member, counterparty, category)`, enforced by Postgres rather than application code. The constraint is partial on `superseded_by IS NULL` (superseded versions do not participate) and `DEFERRABLE INITIALLY IMMEDIATE` so a correction can append a successor and mark its predecessor superseded in one transaction. See migration `0002_temporal_integrity.sql`.
+- **Corrections supersede, never overwrite.** `superseded_by` points at the successor that replaced a row; `NULL` means active/current. The prior version is retained and marked superseded, never deleted.
 - **Opaque UUID primary keys everywhere.** No sequential, publicly enumerable ids, so exports stay stable and non-enumerable.
 - **Counterparties are first-class but provisional.** A declared company/trust/asset is a `counterparty` row referenced by UUID, explicitly `resolved = false`. v1 never asserts a legal identity (e.g. an ACN); the UUID is the anchor v2 resolution attaches to.
 - **Politicians are hard-resolved.** `canonical_name` + `name_variants` + `external_ids` (Parliament / OpenAustralia / Wikidata) enable tracking the same member across parliaments.
 
 ### Skeleton vs v1 target
 
-The current migration (`0001_walking_skeleton.sql`) is deliberately minimal. Later slices grow it toward the full v1 target **without re-modelling the core**:
+The migrations (`0001_walking_skeleton.sql`, then `0002_temporal_integrity.sql`) start minimal and grow toward the full v1 target **without re-modelling the core**:
 
 | Concern | Skeleton (today) | v1 target |
 |---|---|---|
-| Valid time | plain `valid_from` / `valid_to` date columns | `daterange` / `tstzrange` with `EXCLUDE USING GIST` to prevent overlapping validity per entity |
+| Valid time | ✅ half-open `daterange` (`validity`) with `EXCLUDE USING GIST` preventing overlapping validity per active `(member, counterparty, category)` (migration 0002) | `tstzrange` record axis added when system-time "as of" views exist |
+| Corrections | `superseded_by` supersession pointer in place; deferrable constraint lets a correction append + supersede atomically (migration 0002) | full append-only **supersession** workflow + corrections ledger |
 | "State as of date D" | not yet | SQL **views** over the event log (not stored tables) |
-| Corrections | not yet | append-only **supersession** events |
 | Counterparty similarity | not yet | **pgvector** embedding + similarity at query time (no materialised clusters) |
 | Family members | not modelled | `Person` entities + private household→member edge; public display is role-based signal only |
 
