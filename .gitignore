@@ -21,6 +21,8 @@ dist/
 # Data / artifacts (source PDFs and DB volumes are not committed)
 data/
 *.pdf
+# ...except checked-in test fixtures (scanned register pages the extraction tests run against)
+!tests/fixtures/*.pdf
 *.sqlite
 *.duckdb
 *.parquet
