@@ -14,7 +14,7 @@ from uuid import UUID
 import psycopg
 from psycopg.types.json import Jsonb
 
-from plain_sight.db.repository import MemberInterest, VerifiedClaim
+from plain_sight.db.repository import ChangeHistoryEntry, MemberInterest, VerifiedClaim
 from plain_sight.domain import (
     BBox,
     Counterparty,
@@ -210,6 +210,29 @@ class PostgresRepository:
         ).fetchall()
         return [(_event(row), _counterparty(row)) for row in rows]
 
+    def change_history_for_member(self, member_id: UUID) -> list[ChangeHistoryEntry]:
+        """A member's full change history, via the ``member_change_history`` view.
+
+        The timeline of what was acquired and divested and when, reconstructed from
+        the event log. Unlike the state views this retains superseded events (each
+        marked by its ``superseded_by`` pointer), so a correction is visible rather
+        than erased. Ordered chronologically by valid-time acquisition
+        (``lower(validity)``, unbounded starts first), then by record time
+        (``ingested_at``) so a correction sorts after the version it supersedes,
+        then by ``id`` for a stable total order.
+        """
+
+        rows = self._conn.execute(
+            f"""
+            SELECT {_HISTORY_COLUMNS}
+            FROM member_change_history
+            WHERE member_id = %s
+            ORDER BY lower(validity) NULLS FIRST, ingested_at, id
+            """,
+            (member_id,),
+        ).fetchall()
+        return [ChangeHistoryEntry(_event(row), _counterparty(row), row[20]) for row in rows]
+
 
 # Column list for the bitemporal views, in the exact positional order ``_event``
 # and ``_counterparty`` below expect. The views expose ``validity`` as a single
@@ -222,6 +245,12 @@ _INTEREST_COLUMNS = """
     verification_status, verified_by, verified_at, ingested_at,
     counterparty_raw_string, counterparty_normalised_label, counterparty_resolved
 """
+
+# The change-history view adds one column beyond the shared interest columns:
+# ``superseded_by`` (the marker that a later correction replaced this row). It is
+# appended last so ``_event`` and ``_counterparty`` keep their positional indices
+# and the pointer lands at a known trailing position (row[20]).
+_HISTORY_COLUMNS = _INTEREST_COLUMNS + ", superseded_by"
 
 
 def _person(row: tuple[Any, ...]) -> Person:
