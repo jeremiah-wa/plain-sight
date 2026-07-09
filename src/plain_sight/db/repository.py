@@ -18,6 +18,13 @@ from plain_sight.domain import Counterparty, DeclarationEvent, Person, SourceDoc
 #: A verified claim paired with the counterparty it was declared against.
 VerifiedClaim = tuple[DeclarationEvent, Counterparty]
 
+#: An interest (a declaration event) paired with the counterparty it names, as
+#: returned by the bitemporal query views. Unlike :data:`VerifiedClaim` this is not
+#: verification-filtered: the views reconstruct temporal state, and the events they
+#: return are the current (non-superseded) versions of the record, whatever their
+#: verification status.
+MemberInterest = tuple[DeclarationEvent, Counterparty]
+
 
 class Repository(Protocol):
     """Persistence operations for the walking skeleton."""

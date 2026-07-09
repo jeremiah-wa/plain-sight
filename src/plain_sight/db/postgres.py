@@ -7,14 +7,14 @@ so the tests can assert it without an ORM obscuring it.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
 import psycopg
 from psycopg.types.json import Jsonb
 
-from plain_sight.db.repository import VerifiedClaim
+from plain_sight.db.repository import MemberInterest, VerifiedClaim
 from plain_sight.domain import (
     BBox,
     Counterparty,
@@ -169,6 +169,59 @@ class PostgresRepository:
             (member_id,),
         ).fetchall()
         return [(_event(row), _counterparty(row)) for row in rows]
+
+    def current_interests_for_member(self, member_id: UUID) -> list[MemberInterest]:
+        """The active interests a member holds *now*, via the ``current_interest`` view.
+
+        Reconstructed from the event log: only the current (non-superseded) version
+        of each record, sliced to the interests whose validity contains today. A
+        superseded event is invisible here; a holding whose validity has ended is
+        no longer current. Oldest first.
+        """
+
+        rows = self._conn.execute(
+            f"""
+            SELECT {_INTEREST_COLUMNS}
+            FROM current_interest
+            WHERE member_id = %s
+            ORDER BY ingested_at, id
+            """,
+            (member_id,),
+        ).fetchall()
+        return [(_event(row), _counterparty(row)) for row in rows]
+
+    def interests_as_of(self, member_id: UUID, as_of: date) -> list[MemberInterest]:
+        """State as of valid-time date ``as_of``: what the member held on that date.
+
+        A valid-time slice of the ``active_interest`` view, so it respects
+        supersession (superseded events never appear) while reconstructing the
+        historically-correct set for any date from the surviving events. Oldest
+        first.
+        """
+
+        rows = self._conn.execute(
+            f"""
+            SELECT {_INTEREST_COLUMNS}
+            FROM active_interest
+            WHERE member_id = %s AND validity @> %s::date
+            ORDER BY ingested_at, id
+            """,
+            (member_id, as_of),
+        ).fetchall()
+        return [(_event(row), _counterparty(row)) for row in rows]
+
+
+# Column list for the bitemporal views, in the exact positional order ``_event``
+# and ``_counterparty`` below expect. The views expose ``validity`` as a single
+# range; the row mappers want its bounds, so they are split out here.
+_INTEREST_COLUMNS = """
+    id, member_id, counterparty_id, category, description,
+    lower(validity), upper(validity),
+    document_id, page, extraction_method, extraction_confidence,
+    fetch_timestamp, bbox,
+    verification_status, verified_by, verified_at, ingested_at,
+    counterparty_raw_string, counterparty_normalised_label, counterparty_resolved
+"""
 
 
 def _person(row: tuple[Any, ...]) -> Person:
