@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Claim not found{% endblock %}
+{% block content %}
+  <h1>Claim not found</h1>
+  <p class="muted">That claim does not exist, or its source is missing.</p>
+  <p><a href="/members/{{ member_name | urlencode }}">&larr; {{ member_name }}'s queue</a></p>
+{% endblock %}

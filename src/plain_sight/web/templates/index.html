@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Verification queue</h1>
+  <p class="muted">
+    Open a member's queue to review their pending claims against the source scans.
+  </p>
+  <form method="get" action="/" onsubmit="event.preventDefault(); window.location='/members/' + encodeURIComponent(this.member.value.trim());">
+    <label for="member">Member (canonical name)</label>
+    <input id="member" name="member" placeholder="e.g. Jane Member" required />
+    <div class="actions">
+      <button class="primary" type="submit">Open queue</button>
+    </div>
+  </form>
+{% endblock %}

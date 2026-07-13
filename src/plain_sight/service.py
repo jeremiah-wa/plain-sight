@@ -12,8 +12,14 @@ from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from plain_sight.db.repository import Repository
-from plain_sight.domain import DeclarationEvent, Person
-from plain_sight.extraction import Extractor, map_candidates
+from plain_sight.domain import (
+    ClaimCorrection,
+    Counterparty,
+    DeclarationEvent,
+    Person,
+    VerificationStatus,
+)
+from plain_sight.extraction import Extractor, map_candidates, normalise_counterparty
 from plain_sight.sources import DocumentStore
 
 
@@ -71,6 +77,88 @@ def confirm(
     """Transition one claim from ``pending`` to ``verified``."""
 
     return repo.verify_event(event_id, verified_by=verified_by, verified_at=verified_at)
+
+
+def correct(
+    *,
+    repo: Repository,
+    event_id: UUID,
+    correction: ClaimCorrection,
+    corrected_by: str,
+    corrected_at: datetime,
+    reason: str,
+    id_factory: Callable[[], UUID] = uuid4,
+) -> DeclarationEvent | None:
+    """Confirm a claim with corrected fields, as an append-only supersession.
+
+    Rather than mutate the machine's candidate, this appends a *new* declaration
+    event carrying the operator's corrected values plus verification metadata and
+    the correction reason (who/why/when), and marks the original superseded. The
+    original candidate is retained in the log so the model's mistake stays
+    measurable. Provenance is carried forward: the correction still points at the
+    exact source scan the claim was read from.
+
+    A changed counterparty string becomes a new first-class counterparty
+    referenced by UUID (never inlined); an unchanged string keeps the original.
+    Returns the superseding event, or ``None`` if the claim is absent or already
+    settled (verified or superseded).
+    """
+
+    original = repo.get_declaration_event(event_id)
+    if original is None:
+        return None
+
+    counterparty_id = _counterparty_for_correction(
+        repo, original, correction.counterparty_raw, id_factory
+    )
+    successor = original.model_copy(
+        update={
+            "id": id_factory(),
+            "counterparty_id": counterparty_id,
+            "category": correction.category,
+            "description": correction.description,
+            "valid_from": correction.valid_from,
+            "valid_to": correction.valid_to,
+            "verification_status": VerificationStatus.VERIFIED,
+            "verified_by": corrected_by,
+            "verified_at": corrected_at,
+            "correction_reason": reason,
+            "superseded_by": None,
+            "ingested_at": corrected_at,
+        }
+    )
+    if not repo.supersede_event(event_id, successor):
+        return None
+    return successor
+
+
+def _counterparty_for_correction(
+    repo: Repository,
+    original: DeclarationEvent,
+    counterparty_raw: str,
+    id_factory: Callable[[], UUID],
+) -> UUID:
+    """Resolve the counterparty a correction should reference.
+
+    Reuse the original counterparty if the corrected string normalises to the
+    same label; otherwise register a new provisional counterparty and reference it
+    by UUID, so a corrected transcription never silently rewrites the entity that
+    other events still point at.
+    """
+
+    label = normalise_counterparty(counterparty_raw)
+    existing = repo.get_counterparty(original.counterparty_id)
+    if existing is not None and existing.normalised_label.casefold() == label.casefold():
+        return original.counterparty_id
+
+    counterparty = Counterparty(
+        id=id_factory(),
+        raw_string=counterparty_raw,
+        normalised_label=label,
+        resolved=False,
+    )
+    repo.add_counterparty(counterparty)
+    return counterparty.id
 
 
 def render_member_interests(*, repo: Repository, member_name: str) -> str:

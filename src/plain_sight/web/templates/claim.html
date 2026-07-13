@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Verify claim, {{ member_name }}{% endblock %}
+{% block content %}
+  <p><a href="/members/{{ member_name | urlencode }}">&larr; {{ member_name }}'s queue</a></p>
+  <div id="claim-card" class="split">
+    <section>
+      <h2>Source scan</h2>
+      <p class="muted">The exact page this claim was read from. Check every field against it.</p>
+      <embed src="{{ scan_url }}" type="application/pdf" />
+      <dl class="provenance">
+        <dt>document</dt><dd>{{ document.id }}</dd>
+        <dt>page</dt><dd>{{ event.provenance.page }}</dd>
+        <dt>method</dt><dd>{{ event.provenance.extraction_method }}</dd>
+        <dt>confidence</dt>
+        <dd>{{ "%.0f%%" | format(event.provenance.extraction_confidence * 100) }}</dd>
+        {% if event.provenance.bbox %}
+          <dt>bbox</dt><dd>{{ event.provenance.bbox }}</dd>
+        {% endif %}
+      </dl>
+    </section>
+
+    <section>
+      <h2>Extracted fields</h2>
+      {% if not is_pending %}
+        <p class="message">
+          This claim is already {{ event.verification_status.value }}. Nothing to verify.
+        </p>
+      {% else %}
+        <p class="muted">
+          Edit any field then save a correction, or confirm the claim exactly as declared.
+        </p>
+        <form
+          method="post"
+          action="/members/{{ member_name | urlencode }}/claims/{{ event.id }}/correct"
+          hx-post="/members/{{ member_name | urlencode }}/claims/{{ event.id }}/correct"
+          hx-target="#claim-card"
+          hx-swap="outerHTML"
+        >
+          <label for="category">Category</label>
+          <select id="category" name="category">
+            {% for option in categories %}
+              <option value="{{ option.value }}" {{ 'selected' if option == event.category else '' }}>
+                {{ option.value }}
+              </option>
+            {% endfor %}
+          </select>
+
+          <label for="counterparty_raw">Counterparty</label>
+          <input id="counterparty_raw" name="counterparty_raw"
+                 value="{{ counterparty.raw_string }}" required />
+
+          <label for="description">Description</label>
+          <input id="description" name="description" value="{{ event.description or '' }}" />
+
+          <label for="valid_from">Valid from</label>
+          <input id="valid_from" name="valid_from" type="date"
+                 value="{{ event.valid_from.isoformat() if event.valid_from else '' }}" />
+
+          <label for="valid_to">Valid to</label>
+          <input id="valid_to" name="valid_to" type="date"
+                 value="{{ event.valid_to.isoformat() if event.valid_to else '' }}" />
+
+          <label for="reason">Correction reason</label>
+          <textarea id="reason" name="reason" rows="2"
+                    placeholder="Why the correction (recorded on the superseding event)" required></textarea>
+
+          <div class="actions">
+            <button class="primary" type="submit">Save correction &amp; verify</button>
+          </div>
+        </form>
+
+        <form
+          method="post"
+          action="/members/{{ member_name | urlencode }}/claims/{{ event.id }}/confirm"
+          hx-post="/members/{{ member_name | urlencode }}/claims/{{ event.id }}/confirm"
+          hx-target="#claim-card"
+          hx-swap="outerHTML"
+        >
+          <div class="actions">
+            <button type="submit">Confirm as declared</button>
+          </div>
+        </form>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

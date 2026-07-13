@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from plain_sight.db.repository import VerifiedClaim
+from plain_sight.db.repository import PendingClaim, VerifiedClaim
 from plain_sight.domain import (
     Counterparty,
     DeclarationEvent,
@@ -36,11 +36,46 @@ class InMemoryRepository:
     def add_source_document(self, document: SourceDocument) -> None:
         self._documents[document.id] = document
 
+    def get_source_document(self, document_id: UUID) -> SourceDocument | None:
+        return self._documents.get(document_id)
+
     def add_counterparty(self, counterparty: Counterparty) -> None:
         self._counterparties[counterparty.id] = counterparty
 
+    def get_counterparty(self, counterparty_id: UUID) -> Counterparty | None:
+        return self._counterparties.get(counterparty_id)
+
     def add_declaration_event(self, event: DeclarationEvent) -> None:
         self._events[event.id] = event
+
+    def get_declaration_event(self, event_id: UUID) -> DeclarationEvent | None:
+        return self._events.get(event_id)
+
+    def supersede_event(self, original_event_id: UUID, successor: DeclarationEvent) -> bool:
+        original = self._events.get(original_event_id)
+        if (
+            original is None
+            or original.verification_status is not VerificationStatus.PENDING
+            or original.superseded_by is not None
+        ):
+            return False
+        self._events[successor.id] = successor
+        self._events[original_event_id] = original.model_copy(
+            update={"superseded_by": successor.id}
+        )
+        return True
+
+    def pending_claims_for_member(self, member_id: UUID) -> list[PendingClaim]:
+        claims = [
+            (event, self._counterparties[event.counterparty_id], self._documents[doc_id])
+            for event in self._events.values()
+            if event.member_id == member_id
+            and event.verification_status is VerificationStatus.PENDING
+            and event.superseded_by is None
+            if (doc_id := event.provenance.document_id) in self._documents
+        ]
+        claims.sort(key=lambda claim: (claim[0].ingested_at, claim[0].id))
+        return claims
 
     def verify_event(self, event_id: UUID, *, verified_by: str, verified_at: datetime) -> bool:
         event = self._events.get(event_id)
