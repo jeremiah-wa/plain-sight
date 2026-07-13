@@ -80,6 +80,7 @@ def _event(
     member_id: UUID = JANE_ID,
     counterparty_id: UUID = BHP_ID,
     category: InterestCategory = InterestCategory.SHAREHOLDING,
+    ingested_at: datetime = NOW,
 ) -> DeclarationEvent:
     return DeclarationEvent(
         id=uuid4(),
@@ -95,7 +96,7 @@ def _event(
             extraction_confidence=0.9,
             fetch_timestamp=NOW,
         ),
-        ingested_at=NOW,
+        ingested_at=ingested_at,
     )
 
 
@@ -214,3 +215,98 @@ def test_superseded_event_is_absent_but_prior_state_is_recoverable(
     sunrise_claim = next((e for e, c in as_of_2021 if c.raw_string == "Sunrise Pty Ltd"), None)
     assert sunrise_claim is not None
     assert sunrise_claim.id == sunrise_closed.id
+
+
+def _seed_change_history(
+    repo: PostgresRepository, conn: psycopg.Connection[Any]
+) -> tuple[DeclarationEvent, DeclarationEvent, DeclarationEvent]:
+    """Seed an acquire -> divest-via-correction sequence with distinct record times.
+
+    Unlike :func:`_seed_history`, each event carries its own ``ingested_at`` so the
+    change history has a genuine record-time order to assert:
+
+    - ``bhp``: shareholding acquired 2019, recorded 2019, never altered.
+    - ``sunrise_original``: real estate acquired 2020, recorded 2020, open-ended;
+      later superseded (retained, never deleted).
+    - ``sunrise_closed``: the correction recorded 2022 that divests Sunrise by
+      closing its period at 2022-06-01 and supersedes the open-ended original.
+
+    Returns ``(bhp, sunrise_original, sunrise_closed)``.
+    """
+
+    bhp = _event(
+        valid_from=date(2019, 1, 1),
+        valid_to=None,
+        ingested_at=datetime(2019, 2, 1, 12, 0, tzinfo=UTC),
+    )
+    sunrise_original = _event(
+        valid_from=date(2020, 1, 1),
+        valid_to=None,
+        counterparty_id=SUNRISE_ID,
+        category=InterestCategory.REAL_ESTATE,
+        ingested_at=datetime(2020, 2, 1, 12, 0, tzinfo=UTC),
+    )
+    repo.add_declaration_event(bhp)
+    repo.add_declaration_event(sunrise_original)
+    conn.commit()
+
+    sunrise_closed = _event(
+        valid_from=date(2020, 1, 1),
+        valid_to=date(2022, 6, 1),
+        counterparty_id=SUNRISE_ID,
+        category=InterestCategory.REAL_ESTATE,
+        ingested_at=datetime(2022, 7, 1, 12, 0, tzinfo=UTC),
+    )
+    with conn.transaction():
+        conn.execute("SET CONSTRAINTS declaration_event_no_active_overlap DEFERRED")
+        repo.add_declaration_event(sunrise_closed)
+        conn.execute(
+            "UPDATE declaration_event SET superseded_by = %s WHERE id = %s",
+            (sunrise_closed.id, sunrise_original.id),
+        )
+
+    # A holding for the other member, to prove per-member scoping of the history.
+    repo.add_declaration_event(
+        _event(
+            valid_from=date(2018, 1, 1),
+            valid_to=None,
+            member_id=OTHER_ID,
+            counterparty_id=OTHER_HOLDING_ID,
+            ingested_at=datetime(2018, 2, 1, 12, 0, tzinfo=UTC),
+        )
+    )
+    conn.commit()
+    return bhp, sunrise_original, sunrise_closed
+
+
+def test_change_history_orders_by_record_time_and_keeps_superseded_marked(
+    repo: PostgresRepository, postgres_conn: psycopg.Connection[Any]
+) -> None:
+    bhp, sunrise_original, sunrise_closed = _seed_change_history(repo, postgres_conn)
+
+    history = repo.change_history_for_member(JANE_ID)
+
+    # The full chronological sequence of changes, ordered by record time (when each
+    # fact entered the record): acquire BHP, acquire Sunrise, then the correction
+    # that divests it. The superseded original is present, never dropped.
+    assert [change.event.id for change in history] == [
+        bhp.id,
+        sunrise_original.id,
+        sunrise_closed.id,
+    ]
+
+    # The other member's holding does not leak into Jane's history.
+    assert OTHER_HOLDING_ID not in {change.counterparty.id for change in history}
+
+    # Supersession is surfaced as a marker, not by dropping the row: the corrected
+    # original stays visible, marked superseded; the acquisitions/correction do not.
+    by_id = {change.event.id: change for change in history}
+    assert by_id[sunrise_original.id].superseded is True
+    assert by_id[sunrise_closed.id].superseded is False
+    assert by_id[bhp.id].superseded is False
+
+    # Each row surfaces both axes: valid time (effective) and record time (ingested).
+    divest = by_id[sunrise_closed.id]
+    assert divest.event.valid_from == date(2020, 1, 1)  # acquired (valid time)
+    assert divest.event.valid_to == date(2022, 6, 1)  # divested (valid time)
+    assert divest.event.ingested_at == datetime(2022, 7, 1, 12, 0, tzinfo=UTC)  # record time

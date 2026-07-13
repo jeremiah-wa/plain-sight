@@ -14,7 +14,7 @@ from uuid import UUID
 import psycopg
 from psycopg.types.json import Jsonb
 
-from plain_sight.db.repository import MemberInterest, VerifiedClaim
+from plain_sight.db.repository import ChangeHistoryEntry, MemberInterest, VerifiedClaim
 from plain_sight.domain import (
     BBox,
     Counterparty,
@@ -209,6 +209,32 @@ class PostgresRepository:
             (member_id, as_of),
         ).fetchall()
         return [(_event(row), _counterparty(row)) for row in rows]
+
+    def change_history_for_member(self, member_id: UUID) -> list[ChangeHistoryEntry]:
+        """A member's declarations as an ordered change history, via
+        ``member_change_history``.
+
+        The full chronological record, ordered by record time (when each fact
+        entered the record), so acquisitions, divestments, and the corrections
+        that supersede them appear in the sequence they were learned. Every
+        version is retained: a superseded event stays in the history flagged
+        ``superseded=True`` rather than dropped, so the timeline is complete and
+        auditable. Each row carries both time axes (valid time on the event's
+        ``valid_from`` / ``valid_to``, record time on ``ingested_at``).
+        """
+
+        rows = self._conn.execute(
+            f"""
+            SELECT {_INTEREST_COLUMNS}, superseded
+            FROM member_change_history
+            WHERE member_id = %s
+            ORDER BY ingested_at, id
+            """,
+            (member_id,),
+        ).fetchall()
+        return [
+            ChangeHistoryEntry(_event(row), _counterparty(row), superseded=row[20]) for row in rows
+        ]
 
 
 # Column list for the bitemporal views, in the exact positional order ``_event``

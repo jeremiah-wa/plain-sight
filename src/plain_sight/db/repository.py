@@ -10,7 +10,7 @@ implementation is checked against the same contract under the ``postgres`` mark.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import NamedTuple, Protocol
 from uuid import UUID
 
 from plain_sight.domain import Counterparty, DeclarationEvent, Person, SourceDocument
@@ -24,6 +24,23 @@ VerifiedClaim = tuple[DeclarationEvent, Counterparty]
 #: return are the current (non-superseded) versions of the record, whatever their
 #: verification status.
 MemberInterest = tuple[DeclarationEvent, Counterparty]
+
+
+class ChangeHistoryEntry(NamedTuple):
+    """One row of a member's change history: a single change in the timeline.
+
+    Where :data:`MemberInterest` returns only current (non-superseded) versions,
+    change history retains *every* version, so a superseded event stays visible
+    and is flagged rather than dropped. Both time axes are on the row: valid time
+    (effective, via ``event.valid_from`` / ``event.valid_to``) and record time
+    (when the fact entered the record, via ``event.ingested_at``).
+    """
+
+    event: DeclarationEvent
+    counterparty: Counterparty
+    #: ``True`` when a later correction superseded this event (``superseded_by``
+    #: is set). The row is kept, never removed, so the correction is auditable.
+    superseded: bool
 
 
 class Repository(Protocol):
