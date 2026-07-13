@@ -88,6 +88,20 @@ class PostgresRepository:
             ),
         )
 
+    def latest_document_for_member(self, member_id: UUID) -> SourceDocument | None:
+        row = self._conn.execute(
+            """
+            SELECT id, member_id, content_sha256, storage_path, page_count,
+                   source_url, fetched_at, jurisdiction
+            FROM source_document
+            WHERE member_id = %s
+            ORDER BY fetched_at DESC, id DESC
+            LIMIT 1
+            """,
+            (member_id,),
+        ).fetchone()
+        return None if row is None else _source_document(row)
+
     def add_counterparty(self, counterparty: Counterparty) -> None:
         self._conn.execute(
             """
@@ -232,6 +246,19 @@ def _person(row: tuple[Any, ...]) -> Person:
         external_ids=dict(row[3]),
         chamber=row[4],
         jurisdiction=row[5],
+    )
+
+
+def _source_document(row: tuple[Any, ...]) -> SourceDocument:
+    return SourceDocument(
+        id=row[0],
+        member_id=row[1],
+        content_sha256=row[2],
+        storage_path=row[3],
+        page_count=row[4],
+        source_url=row[5],
+        fetched_at=row[6],
+        jurisdiction=row[7],
     )
 
 
