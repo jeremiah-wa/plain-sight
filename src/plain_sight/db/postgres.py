@@ -170,6 +170,19 @@ class PostgresRepository:
         ).fetchall()
         return [(_event(row), _counterparty(row)) for row in rows]
 
+    def source_documents_for_member(self, member_id: UUID) -> list[SourceDocument]:
+        rows = self._conn.execute(
+            """
+            SELECT id, member_id, content_sha256, storage_path, page_count,
+                   source_url, fetched_at, jurisdiction
+            FROM source_document
+            WHERE member_id = %s
+            ORDER BY fetched_at, id
+            """,
+            (member_id,),
+        ).fetchall()
+        return [_source_document(row) for row in rows]
+
     def current_interests_for_member(self, member_id: UUID) -> list[MemberInterest]:
         """The active interests a member holds *now*, via the ``current_interest`` view.
 
@@ -232,6 +245,19 @@ def _person(row: tuple[Any, ...]) -> Person:
         external_ids=dict(row[3]),
         chamber=row[4],
         jurisdiction=row[5],
+    )
+
+
+def _source_document(row: tuple[Any, ...]) -> SourceDocument:
+    return SourceDocument(
+        id=row[0],
+        member_id=row[1],
+        content_sha256=row[2],
+        storage_path=row[3],
+        page_count=row[4],
+        source_url=row[5],
+        fetched_at=row[6],
+        jurisdiction=row[7],
     )
 
 

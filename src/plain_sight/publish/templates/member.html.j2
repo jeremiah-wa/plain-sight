@@ -1,0 +1,58 @@
+{% extends "base.html.j2" %}
+{% block title %}{{ page.member_name }} — declared interests — Plain Sight{% endblock %}
+{% block content %}
+  <article class="member">
+    <h1>{{ page.member_name }}</h1>
+    <p class="standing-statement">{{ page.standing_statement }}</p>
+
+    <section class="freshness" aria-label="freshness">
+      <h2>Freshness</h2>
+      <dl>
+        <dt>source last checked</dt>
+        <dd>{{ page.freshness.source_last_checked | dateonly }}</dd>
+        <dt>source last changed</dt>
+        <dd>{{ page.freshness.source_last_changed | dateonly }}</dd>
+        <dt>last verified by us</dt>
+        <dd>{{ page.freshness.last_verified | dateonly }}</dd>
+      </dl>
+      <p class="freshness-note">
+        This page is as fresh as the last publish run ({{ page.generated_at | dateonly }}).
+        Freshness is surfaced, not promised.
+      </p>
+    </section>
+
+    <section class="interests" aria-label="declared interests">
+      <h2>Declared interests</h2>
+      {% if page.claims %}
+      <ul>
+        {% for claim in page.claims %}
+        <li class="claim">
+          <span class="category">{{ claim.category }}</span>
+          <span class="as-declared">as declared: "{{ claim.counterparty_raw }}"</span>
+          {% if claim.description %}
+          <span class="description">{{ claim.description }}</span>
+          {% endif %}
+          {% if claim.period %}
+          <span class="period">{{ claim.period }}</span>
+          {% endif %}
+          <span class="confidence">confidence {{ "%.2f" | format(claim.confidence) }}</span>
+          {% if claim.source_url %}
+          <a class="source" href="{{ claim.source_url }}" rel="nofollow">source: page {{ claim.page }}</a>
+          {% else %}
+          <span class="source">source: page {{ claim.page }} (scan on file)</span>
+          {% endif %}
+          {% if claim.verified_by and claim.verified_at %}
+          <span class="verified">verified by {{ claim.verified_by }} on {{ claim.verified_at | dateonly }}</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">No verified declared interests yet.</p>
+      {% endif %}
+    </section>
+  </article>
+{% endblock %}
+{% block footer %}
+  <p class="standing-statement">{{ page.standing_statement }}</p>
+{% endblock %}

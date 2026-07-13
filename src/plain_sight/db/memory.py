@@ -64,3 +64,10 @@ class InMemoryRepository:
         ]
         claims.sort(key=lambda claim: (claim[0].ingested_at, claim[0].id))
         return claims
+
+    def source_documents_for_member(self, member_id: UUID) -> list[SourceDocument]:
+        documents = [
+            document for document in self._documents.values() if document.member_id == member_id
+        ]
+        documents.sort(key=lambda document: (document.fetched_at, document.id))
+        return documents
