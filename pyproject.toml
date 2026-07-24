@@ -47,7 +47,14 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+# Mechanised coding style: the closest thing this repo has to a "conventions"
+select = ["E", "F", "I", "UP", "B", "N", "C90", "SIM", "RUF"]
+# No-dash rule is prose-only: allow dashes in string literals (RUF001), still
+# catch them in docstrings (RUF002) and comments (RUF003).
+ignore = ["RUF001"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.format]
 docstring-code-format = true
