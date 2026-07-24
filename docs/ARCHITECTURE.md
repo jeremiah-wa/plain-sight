@@ -46,11 +46,12 @@ The design objective is to **minimise human-minutes per week**. Everything is au
 
 ## Non-negotiable properties, and where they live
 
-These five properties from the PRD are the reason the architecture looks the way it does. Each one is anchored to a specific place in the system, so it is enforced structurally rather than by convention.
+These six properties from the PRD are the reason the architecture looks the way it does. Each one is anchored to a specific place in the system, so it is enforced structurally rather than by convention. **This table is the canonical list of product invariants.** `AGENTS.md` restates each as an imperative tripwire that links back here; the rationale lives only in this document (and, once a decision changes, in the superseding record under `docs/decisions/`).
 
 | Property | Where it is enforced |
 |---|---|
-| **Mirrored facts only** (no inferred connections in v1) | The data model stores only declared claims; counterparties stay provisional strings, never resolved to legal entities. |
+| **Mirrored facts only** (nothing inferred is published in v1) | The data model stores only declared claims; no Type B connection reaches the publish gate. |
+| **Counterparties stay provisional** | A declared company/trust/asset is a `counterparty` row with `resolved = false`, referenced by UUID. v1 never asserts a legal identity (e.g. an ACN); display is always "as declared". |
 | **Verified-only display** | The **publish gate**: unverified rows are *physically absent* from the public artifacts, not merely filtered by a query. |
 | **Minimise the person** | Also the publish gate: household interests published as role-based signals ("spouse holds X"), names only via a logged editorial override. |
 | **Never silently edit history** | Append-only, bitemporal event log; corrections are supersession events, the prior version is retained and marked superseded. |

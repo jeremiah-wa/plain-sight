@@ -1,0 +1,23 @@
+name: Sync labels
+
+# Declarative label sync: .github/labels.yml is canonical, GitHub is made to
+# match it. skip_delete=false means labels not in the manifest are removed.
+on:
+  push:
+    branches: [main]
+    paths: [".github/labels.yml"]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  labeler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crazy-max/ghaction-github-labeler@v5
+        with:
+          yaml_file: .github/labels.yml
+          skip_delete: false
+          dry_run: false

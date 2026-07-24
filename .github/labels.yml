@@ -1,0 +1,67 @@
+# Canonical label set for this repo. This file is the single source of truth;
+# GitHub is synced FROM it by .github/workflows/labels.yml (declarative: labels
+# not listed here are deleted). Edit here, never in the GitHub UI.
+#
+# With prefixes dropped from subsystem/type labels, COLOUR carries the category:
+#   subsystem  blue    #0366d6   which part of the system
+#   type       purple  #5319e7   issue type (issues only)
+#   status:    green -> amber -> orange -> red -> black   the workflow lane (keeps
+#              its prefix: it is the controlled lane board automation keys on)
+# The three palettes do not overlap, so a label's category reads from its colour.
+#
+# Subsystem names mirror the seam / commit-scope vocabulary (see AGENTS.md
+# Workflow). Add `publish`, `monitoring`, `web` only once those modules exist.
+
+# --- subsystem (blue) ---
+- name: "sources"
+  color: "0366d6"
+  description: "Immutable, content-addressed source document store"
+- name: "extraction"
+  color: "0366d6"
+  description: "Extractor seam and candidate mapping (the only live-model boundary)"
+- name: "db"
+  color: "0366d6"
+  description: "Repository seam: Postgres system of record plus in-memory double"
+- name: "domain"
+  color: "0366d6"
+  description: "Pydantic types at the boundaries (not a persistence layer)"
+- name: "service"
+  color: "0366d6"
+  description: "Application services and operator CLI (ingest / confirm / render)"
+- name: "migrations"
+  color: "0366d6"
+  description: "Hand-authored SQL migrations and schema changes"
+- name: "infra"
+  color: "0366d6"
+  description: "CI, tooling, packaging, and deployment"
+
+# --- type (purple, issues only) ---
+- name: "bug"
+  color: "5319e7"
+  description: "Something is broken or behaves incorrectly"
+- name: "feature"
+  color: "5319e7"
+  description: "New capability or user-facing behaviour"
+- name: "chore"
+  color: "5319e7"
+  description: "Maintenance, tooling, or housekeeping with no behaviour change"
+- name: "docs"
+  color: "5319e7"
+  description: "Documentation, PRD/architecture, or decision records"
+
+# --- status (workflow lane, keeps prefix) ---
+- name: "status: ready"
+  color: "0e8a16"
+  description: "Refined and unblocked; ready for an implementer (human or agent) to pick up"
+- name: "status: in-progress"
+  color: "fbca04"
+  description: "Actively being implemented"
+- name: "status: needs-review"
+  color: "d93f0b"
+  description: "Implementation complete; handed off for review"
+- name: "status: changes-requested"
+  color: "b60205"
+  description: "Review returned it to the implementer for changes"
+- name: "status: blocked"
+  color: "24292f"
+  description: "Waiting on a decision, dependency, or external input"
