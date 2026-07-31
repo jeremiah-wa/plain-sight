@@ -17,8 +17,12 @@ services:
       POSTGRES_DB: plain_sight_test
     ports:
       # Not 5432: the fallback URL hardcodes a port, and a collision with another
-      # local Postgres would mean silently testing against the wrong server.
-      - "55432:5432"
+      # local Postgres would mean silently testing against the wrong server. Not
+      # 55432 either: Windows reserves blocks in the 49152+ dynamic range for
+      # WinNAT and Hyper-V (see `netsh interface ipv4 show excludedportrange`),
+      # and a port that lands in one cannot be bound at all. 15432 is below that
+      # range, so it stays bindable on Windows, macOS, and Linux alike.
+      - "15432:5432"
     # RAM-backed and nothing survives a restart, which is what the destructive
     # fixture wants: no volume to accumulate state, and no per-statement disk I/O.
     tmpfs:

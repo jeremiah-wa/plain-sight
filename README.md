@@ -44,7 +44,7 @@ uv run pytest                             # deterministic tests; -m postgres use
 ```
 
 The `-m postgres` tests run against the throwaway container in `compose.yaml`
-(`postgres:17.6` on port `55432`, data in `tmpfs`), which is what they use when
+(`postgres:17.6` on port `15432`, data in `tmpfs`), which is what they use when
 `PLAIN_SIGHT_TEST_DATABASE_URL` is unset. That fixture drops and re-migrates the
 whole schema, so it refuses any host that is not loopback and any database not
 named `*_test`, with no override. See `.env.example` and

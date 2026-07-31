@@ -49,10 +49,10 @@ def test_refuses_a_database_that_is_not_on_loopback(url: str) -> None:
     "url",
     [
         # A local development database, one suffix away from the disposable one.
-        "postgresql://plain_sight:plain_sight@localhost:55432/plain_sight",
+        "postgresql://plain_sight:plain_sight@localhost:15432/plain_sight",
         "postgresql://plain_sight:plain_sight@127.0.0.1:5432/postgres",
         # Suffix, not substring: a database merely containing "_test".
-        "postgresql://plain_sight:plain_sight@localhost:55432/plain_sight_test_archive",
+        "postgresql://plain_sight:plain_sight@localhost:15432/plain_sight_test_archive",
     ],
 )
 def test_refuses_a_loopback_database_not_named_for_disposal(url: str) -> None:
@@ -76,7 +76,7 @@ def test_the_refusal_names_the_host_and_the_database() -> None:
 
 @pytest.mark.parametrize("host", ["localhost", "LOCALHOST", "127.0.0.1", "[::1]"])
 def test_accepts_every_loopback_spelling(host: str) -> None:
-    url = f"postgresql://plain_sight:plain_sight@{host}:55432/plain_sight_test"
+    url = f"postgresql://plain_sight:plain_sight@{host}:15432/plain_sight_test"
 
     assert resolve_test_database({TEST_DATABASE_URL_VAR: url}) == TargetDatabase(url, explicit=True)
 

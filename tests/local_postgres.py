@@ -23,7 +23,7 @@ TEST_DATABASE_URL_VAR = "PLAIN_SIGHT_TEST_DATABASE_URL"
 #: The ``db`` service in ``compose.yaml``. Used when the variable above is unset.
 #: Literal 127.0.0.1 rather than "localhost", which resolves to ::1 as well and
 #: costs a second connect timeout when the container is not up.
-LOCAL_TEST_DATABASE_URL = "postgresql://plain_sight:plain_sight@127.0.0.1:55432/plain_sight_test"
+LOCAL_TEST_DATABASE_URL = "postgresql://plain_sight:plain_sight@127.0.0.1:15432/plain_sight_test"
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 

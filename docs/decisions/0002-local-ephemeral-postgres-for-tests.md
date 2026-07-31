@@ -39,7 +39,7 @@ loopback host (`localhost`, `127.0.0.1`, `::1`) and a database named `*_test`.
 
 Concretely:
 
-- `compose.yaml` defines `db` on `postgres:17.6`, on host port `55432`, with `/var/lib/postgresql/data` on `tmpfs`, so no state survives a restart.
+- `compose.yaml` defines `db` on `postgres:17.6`, on host port `15432`, with `/var/lib/postgresql/data` on `tmpfs`, so no state survives a restart. (The port was `55432` as first written. Windows reserves blocks inside the 49152+ dynamic range for WinNAT and Hyper-V, and `55432` landed in one, so `docker compose up -d db` could not bind at all; `15432` sits below that range. The decision above is unaffected, only the number.)
 - `tests/local_postgres.py` holds the refusal and the fallback. Unset means "the local container", not "skip".
 - An explicitly configured database that is unreachable is an error; the implicit local default being unreachable is a skip that names `docker compose up -d db`.
 - Version parity is with the deployment target, not with CI: Supabase reports 17.6, so local and CI both move to 17.6.
