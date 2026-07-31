@@ -18,9 +18,11 @@ ADRs. (See the Workflow section of [`AGENTS.md`](../../AGENTS.md).)
 - Format is [MADR](https://adr.github.io/madr/). Fill the sections; delete none.
 - **Also edit the canonical doc** (PRD / `ARCHITECTURE.md`) to reflect the new
   current state, and link it back here (`see ADR-NNNN`).
-- Records are **append-only**. Never edit an `Accepted` record to reverse it.
-  Write a new record that supersedes it, and set the old one's status to
-  `Superseded by ADR-NNNN`.
+- Records are **immutable once merged to `main`**. To change what a merged record
+  says, write a new record that supersedes it, and set the old one's status to
+  `Superseded by ADR-NNNN`. Until it lands on `main` it is a draft on its own
+  branch: edit it freely, `Status` included. Immutability keys off the merge, not
+  off the `Status` field, because nothing outside the branch has read it yet.
 
 | Status | Meaning |
 |---|---|
