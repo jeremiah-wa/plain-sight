@@ -46,7 +46,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # Pinned to the deployment target's version (Supabase reports 17.6), the
+        # same pin as the `db` service in compose.yaml. Keep the two in step.
+        image: postgres:17.6
         env:
           POSTGRES_USER: plain_sight
           POSTGRES_PASSWORD: plain_sight
@@ -60,8 +62,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # Exercises the @pytest.mark.postgres end-to-end test, which is opt-in
-      # (skipped) when this variable is unset.
+      # Points the @pytest.mark.postgres tests at the service container above,
+      # rather than at the compose default they would otherwise fall back to.
+      # Loopback with a *_test database, so it satisfies the fixture's guardrail.
       PLAIN_SIGHT_TEST_DATABASE_URL: postgresql://plain_sight:plain_sight@localhost:5432/plain_sight_test
     steps:
       - uses: actions/checkout@v5
