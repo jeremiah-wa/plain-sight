@@ -1,0 +1,30 @@
+# Ephemeral local Postgres for the `-m postgres` tests.
+#
+#   docker compose up -d db      # tests default to this; nothing else needs setting
+#   docker compose down          # takes the data with it
+#
+# The version is pinned to match the deployment target (Supabase reports 17.6),
+# and the same pin is repeated in .github/workflows/ci.yml. Keep the two in step.
+# Debian-based, not Alpine: the schema does text ordering and equality inside a
+# GIST index, so musl's ICU and collation differences are not worth the smaller
+# image. See docs/decisions/0002-local-ephemeral-postgres-for-tests.md.
+services:
+  db:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: plain_sight
+      POSTGRES_PASSWORD: plain_sight
+      POSTGRES_DB: plain_sight_test
+    ports:
+      # Not 5432: the fallback URL hardcodes a port, and a collision with another
+      # local Postgres would mean silently testing against the wrong server.
+      - "55432:5432"
+    # RAM-backed and nothing survives a restart, which is what the destructive
+    # fixture wants: no volume to accumulate state, and no per-statement disk I/O.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plain_sight -d plain_sight_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
