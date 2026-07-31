@@ -11,6 +11,7 @@ from uuid import UUID
 import psycopg
 import pytest
 
+from local_postgres import TargetDatabase, connect, resolve_test_database
 from plain_sight.db import apply_migrations
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -49,21 +50,33 @@ def sample_pdf_bytes() -> bytes:
     return (FIXTURES / "sample_register_page.pdf").read_bytes()
 
 
-@pytest.fixture
-def postgres_conn() -> Iterator[psycopg.Connection[Any]]:
-    """A migrated, disposable Postgres connection for the opt-in ``postgres`` tests.
+@pytest.fixture(scope="session")
+def postgres_target() -> TargetDatabase:
+    """The vetted database the Postgres tests run against, probed once per session.
 
-    Opt-in: set ``PLAIN_SIGHT_TEST_DATABASE_URL`` to a reachable, disposable
-    database, or the test skips. The schema is dropped and re-migrated around each
-    test so nothing leaks between them or is left behind. The connection is
-    yielded open (not used as ``with conn:``, which in psycopg 3 would close it);
-    tests scope their own transactions with ``conn.transaction()``.
+    Defaults to the ephemeral container in ``compose.yaml``; override with
+    ``PLAIN_SIGHT_TEST_DATABASE_URL``. Either way it must be a loopback host with
+    a ``*_test`` database, or :mod:`local_postgres` refuses outright. Session
+    scope so a container that is not running costs one connect timeout for the
+    whole run, not one per test: pytest replays the cached skip.
     """
 
-    url = os.environ.get("PLAIN_SIGHT_TEST_DATABASE_URL")
-    if not url:
-        pytest.skip("Set PLAIN_SIGHT_TEST_DATABASE_URL to run the Postgres tests")
-    connection = psycopg.connect(url)
+    database = resolve_test_database(os.environ)
+    connect(database).close()
+    return database
+
+
+@pytest.fixture
+def postgres_conn(postgres_target: TargetDatabase) -> Iterator[psycopg.Connection[Any]]:
+    """A migrated, disposable Postgres connection for the ``postgres`` tests.
+
+    The schema is dropped and re-migrated around each test, so nothing leaks
+    between them or is left behind. The connection is yielded open (not used as
+    ``with conn:``, which in psycopg 3 would close it); tests scope their own
+    transactions with ``conn.transaction()``.
+    """
+
+    connection = connect(postgres_target)
     try:
         connection.execute(f"DROP TABLE IF EXISTS {_POSTGRES_TABLES} CASCADE")
         connection.commit()

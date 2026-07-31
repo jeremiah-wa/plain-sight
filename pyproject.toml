@@ -39,7 +39,7 @@ packages = ["src/plain_sight"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "postgres: end-to-end test that requires a reachable Postgres (set PLAIN_SIGHT_TEST_DATABASE_URL)",
+    "postgres: end-to-end test that requires a reachable local Postgres (docker compose up -d db)",
 ]
 
 [tool.ruff]
