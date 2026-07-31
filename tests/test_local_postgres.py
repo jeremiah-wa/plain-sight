@@ -8,8 +8,12 @@ aimed at a database somebody cares about.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import psycopg
 import pytest
+from psycopg.conninfo import conninfo_to_dict
 
 from local_postgres import (
     LOCAL_TEST_DATABASE_URL,
@@ -22,6 +26,12 @@ from local_postgres import (
 
 # A loopback URL on a port nothing listens on, so `connect` fails at once and offline.
 UNREACHABLE_URL = "postgresql://plain_sight:plain_sight@127.0.0.1:1/plain_sight_test"
+
+COMPOSE_FILE = Path(__file__).resolve().parents[1] / "compose.yaml"
+
+# The `db` service's published port, as `"<host>:5432"`. Matched out of the raw
+# text rather than parsed: one regex beats a YAML dependency for one line.
+_PUBLISHED_PORT = re.compile(r'"(\d+):5432"')
 
 
 @pytest.mark.parametrize(
@@ -97,6 +107,20 @@ def test_an_unreachable_explicit_url_is_an_error() -> None:
 
     with pytest.raises(psycopg.OperationalError):
         connect(TargetDatabase(UNREACHABLE_URL, explicit=True))
+
+
+def test_the_fallback_url_names_the_port_compose_publishes() -> None:
+    """Drift between the two would make every Postgres test skip, silently.
+
+    Nothing else notices: CI sets the variable explicitly, so it stays green
+    while every local run quietly stops exercising the schema. The suite would
+    still report success, having tested none of it.
+    """
+
+    published = _PUBLISHED_PORT.findall(COMPOSE_FILE.read_text(encoding="utf-8"))
+
+    assert len(published) == 1, f"expected one published port in compose.yaml, got {published}"
+    assert conninfo_to_dict(LOCAL_TEST_DATABASE_URL)["port"] == published[0]
 
 
 def test_an_unreachable_default_skips_and_names_the_fix() -> None:
