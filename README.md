@@ -35,12 +35,20 @@ The code is a single installable package (`plain_sight`) with a crude operator C
 
 ```bash
 uv sync                                   # install (add --extra llm for the live extractor)
+docker compose up -d db                   # ephemeral local Postgres, for the -m postgres tests
 uv run plain-sight migrate                # apply hand-authored SQL migrations
 uv run plain-sight ingest --member "Jane Doe" --pdf register.pdf --url <source-url>
 uv run plain-sight confirm <event-id> --by "operator"
 uv run plain-sight show --member "Jane Doe"
-uv run pytest                             # deterministic tests; -m postgres needs PLAIN_SIGHT_TEST_DATABASE_URL
+uv run pytest                             # deterministic tests; -m postgres uses the compose db, or skips
 ```
+
+The `-m postgres` tests run against the throwaway container in `compose.yaml`
+(`postgres:17.6` on port `55432`, data in `tmpfs`), which is what they use when
+`PLAIN_SIGHT_TEST_DATABASE_URL` is unset. That fixture drops and re-migrates the
+whole schema, so it refuses any host that is not loopback and any database not
+named `*_test`, with no override. See `.env.example` and
+[ADR 0002](docs/decisions/0002-local-ephemeral-postgres-for-tests.md).
 
 Every extracted claim starts `pending`; only `confirm` makes it `verified`, and `show` renders verified claims only.
 

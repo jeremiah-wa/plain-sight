@@ -243,7 +243,7 @@ flowchart TB
     pg --> pub --> static
 ```
 
-- **Managed Postgres with pgvector** is the durable, cloud-reachable system of record. It is hosted on **Supabase**; there is no local Docker Postgres.
+- **Managed Postgres with pgvector** is the durable, cloud-reachable system of record. It is hosted on **Supabase** (17.6). The **tests** never touch it: they run against an ephemeral local container (`compose.yaml`, pinned to the same 17.6), and the destructive fixture structurally refuses any host that is not loopback or any database not named `*_test`, with no override ([ADR 0002](decisions/0002-local-ephemeral-postgres-for-tests.md)).
 - **GitHub Actions cron** drives the monitoring loop (daily-ish is ample; the registers update ~monthly around sitting weeks).
 - **The verification UI runs locally** against that Postgres, operator-only.
 - **The publish step pushes static artifacts to a free static host.** Public data is as fresh as the last publish run, consistent with "freshness surfaced, not promised".

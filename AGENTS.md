@@ -21,11 +21,12 @@ Read before changing anything:
 
 ```bash
 uv sync                                   # install (add --extra llm for the live extractor)
+docker compose up -d db                   # ephemeral local Postgres, for the -m postgres tests
 uv run plain-sight migrate                # apply hand-authored SQL migrations
 uv run plain-sight ingest --member "Jane Doe" --pdf register.pdf --url <source-url>
 uv run plain-sight confirm <event-id> --by "operator"
 uv run plain-sight show --member "Jane Doe"
-uv run pytest                             # deterministic; -m postgres needs PLAIN_SIGHT_TEST_DATABASE_URL
+uv run pytest                             # deterministic; -m postgres uses the compose db, or skips
 uv run ruff check --fix && uv run ruff format
 uv run mypy                               # strict, whole tree
 uv run pre-commit install                 # ruff + mypy share the uv.lock-pinned versions
@@ -55,7 +56,7 @@ Structural invariants (rationale in the linked ARCHITECTURE sections):
 
 - **No em dashes** in comments, docs, PR descriptions, or commit messages. Use commas, parentheses, or separate sentences.
 - **uv, not poetry**, for all Python tooling.
-- **Postgres is hosted on Supabase; there is no local Docker.** Never run the destructive Postgres test against it.
+- **Postgres is hosted on Supabase, but the tests never touch it.** They run against the ephemeral container in `compose.yaml`; the destructive fixture refuses any non-loopback host or any database not named `*_test`, and there is no override ([ADR 0002](docs/decisions/0002-local-ephemeral-postgres-for-tests.md)).
 - **Use the GLOSSARY vocabulary** (declaration event, provenance, bitemporal, publish gate, minimise the person, supersession) consistently in code and prose.
 - **Coding style is mechanised, not documented.** Formatting, imports, naming, and complexity are enforced by `ruff` and `mypy` (see `pyproject.toml`). There is deliberately no prose "coding conventions" list; a rule earns a written line only when it is genuinely non-obvious and load-bearing (the same bar as the invariants above).
 
