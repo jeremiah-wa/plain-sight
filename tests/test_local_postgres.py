@@ -29,9 +29,25 @@ UNREACHABLE_URL = "postgresql://plain_sight:plain_sight@127.0.0.1:1/plain_sight_
 
 COMPOSE_FILE = Path(__file__).resolve().parents[1] / "compose.yaml"
 
+ENV_EXAMPLE_FILE = Path(__file__).resolve().parents[1] / ".env.example"
+
 # The `db` service's published port, as `"<host>:5432"`. Matched out of the raw
 # text rather than parsed: one regex beats a YAML dependency for one line.
 _PUBLISHED_PORT = re.compile(r'"(\d+):5432"')
+
+# The test database assignment in `.env.example`, commented out or live. Group 1
+# is the leading `#` when it is commented, group 2 the value. Scoped to this one
+# variable: the file documents others, and they are none of this test's business.
+_TEST_URL_ASSIGNMENT = re.compile(
+    rf"^(#\s*)?{re.escape(TEST_DATABASE_URL_VAR)}=(.*)$",
+    re.MULTILINE,
+)
+
+
+def _env_example_assignments() -> list[tuple[str, str]]:
+    """Every spelling of the test database variable in ``.env.example``."""
+
+    return _TEST_URL_ASSIGNMENT.findall(ENV_EXAMPLE_FILE.read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize(
@@ -121,6 +137,36 @@ def test_the_fallback_url_names_the_port_compose_publishes() -> None:
 
     assert len(published) == 1, f"expected one published port in compose.yaml, got {published}"
     assert conninfo_to_dict(LOCAL_TEST_DATABASE_URL)["port"] == published[0]
+
+
+def test_the_env_example_leaves_the_test_database_url_unset() -> None:
+    """A copied `.env.example` must not turn the friendly skip into a hard error.
+
+    Setting the variable at all makes `explicit` true, so an unreachable
+    container stops being a skip that names `docker compose up -d db` and
+    becomes an OperationalError on every Postgres test. Contributors copy this
+    file verbatim, so the safe default has to survive the copy.
+    """
+
+    live = [value for comment, value in _env_example_assignments() if not comment and value]
+
+    assert live == [], f"{TEST_DATABASE_URL_VAR} ships pre-set to {live}"
+
+
+def test_the_env_example_documents_the_url_the_fixture_actually_uses() -> None:
+    """The copy of the fallback URL that no other test pins.
+
+    `test_the_fallback_url_names_the_port_compose_publishes` ties the fixture to
+    compose; this ties the documentation to the fixture. Without it the file can
+    tell a contributor a host or a port the fixture has stopped using, which is
+    how it came to say `localhost` where the fixture says `127.0.0.1`.
+    """
+
+    documented = [value for _, value in _env_example_assignments()]
+
+    assert documented == [LOCAL_TEST_DATABASE_URL], (
+        f"expected .env.example to spell the fallback URL exactly once, got {documented}"
+    )
 
 
 def test_an_unreachable_default_skips_and_names_the_fix() -> None:

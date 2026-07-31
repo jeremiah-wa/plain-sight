@@ -2,8 +2,9 @@
 
 The one place the live extractor's model id and the Postgres URL are read, so the
 ``Extractor`` boundary and the database stay config-driven. Tests never touch
-this: they inject a stub extractor and either an in-memory repository or an
-explicit test database URL.
+this: they inject a stub extractor and either an in-memory repository or the
+ephemeral local Postgres, which they resolve themselves (``tests/local_postgres.py``,
+defaulting to the ``compose.yaml`` container rather than to anything set here).
 """
 
 from __future__ import annotations
