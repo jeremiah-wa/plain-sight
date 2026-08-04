@@ -54,3 +54,12 @@ class Repository(Protocol):
         filter lives here so nothing ``pending`` can reach the reader.
         """
         ...
+
+    def source_documents_for_member(self, member_id: UUID) -> list[SourceDocument]:
+        """Return a member's source documents, oldest fetch first.
+
+        The publish gate reads these for per-claim source links (URL + page) and
+        the per-member freshness block. Not verification-filtered: a document is
+        provenance, not a claim.
+        """
+        ...

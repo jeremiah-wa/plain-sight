@@ -133,3 +133,32 @@ def show(member: str) -> None:
     settings = get_settings()
     with open_session(settings) as repo:
         click.echo(service.render_member_interests(repo=repo, member_name=member))
+
+
+@cli.command()
+@click.option("--member", required=True, help="Canonical member name.")
+@click.option(
+    "--out",
+    "output_dir",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory to write the static HTML into.",
+)
+def publish(member: str, output_dir: Path) -> None:
+    """Emit static, verified-only HTML for a member (the publish gate).
+
+    Reads the system of record and writes an artifact built solely from
+    ``verified`` rows, so pending claims are physically absent from the output.
+    """
+
+    from plain_sight import publish as publish_site
+
+    settings = get_settings()
+    with open_session(settings) as repo:
+        path = publish_site.publish_member(
+            repo=repo,
+            member_name=member,
+            output_dir=output_dir,
+            generated_at=datetime.now(UTC),
+        )
+    click.echo(f"Published {member} to {path}")

@@ -74,6 +74,31 @@ def test_cli_ingest_confirm_show(
     assert "verified by operator" in show_after.output
 
 
+def test_cli_publish_writes_verified_only_html(
+    wired_cli: InMemoryRepository, tmp_path: Path, sample_pdf_bytes: bytes
+) -> None:
+    pdf = tmp_path / "register.pdf"
+    pdf.write_bytes(sample_pdf_bytes)
+    runner = CliRunner()
+
+    ingest = runner.invoke(
+        cli_module.cli,
+        ["ingest", "--member", "Jane Member", "--pdf", str(pdf), "--url", "https://x.test/r.pdf"],
+    )
+    event_id = _UUID_RE.search(ingest.output).group(0)  # type: ignore[union-attr]
+    runner.invoke(cli_module.cli, ["confirm", event_id, "--by", "operator"])
+
+    out = tmp_path / "site"
+    result = runner.invoke(
+        cli_module.cli, ["publish", "--member", "Jane Member", "--out", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+
+    written = (out / "jane-member.html").read_text()
+    assert 'as declared: "BHP Group Ltd"' in written
+    assert "mirrors the official record" in written
+
+
 def test_cli_confirm_unknown_id_errors(wired_cli: InMemoryRepository) -> None:
     runner = CliRunner()
     result = runner.invoke(
