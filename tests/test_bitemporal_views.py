@@ -11,8 +11,9 @@ are exercised:
 
 The whole point is raw SQL temporal reconstruction, so these tests seed a sequence
 of declaration + alteration (supersession) events and query the views directly.
-Opt-in via the shared ``postgres_conn`` fixture (see ``conftest.py``): set
-``PLAIN_SIGHT_TEST_DATABASE_URL`` to a reachable, disposable database.
+Runs against the ephemeral container in ``compose.yaml`` via the shared
+``postgres_conn`` fixture (see ``conftest.py``); ``docker compose up -d db``, and
+it skips if that is not up.
 """
 
 from __future__ import annotations

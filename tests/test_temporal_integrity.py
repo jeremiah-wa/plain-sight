@@ -6,8 +6,9 @@ merely discouraged in application code. The behaviour lives at the DB boundary,
 so these tests exercise the ``EXCLUDE USING GIST`` constraint from 0002 through
 raw SQL rather than through any application logic.
 
-Opt-in via the shared ``postgres_conn`` fixture (see ``conftest.py``): set
-``PLAIN_SIGHT_TEST_DATABASE_URL`` to a reachable, disposable database.
+Runs against the ephemeral container in ``compose.yaml`` via the shared
+``postgres_conn`` fixture (see ``conftest.py``); ``docker compose up -d db``, and
+it skips if that is not up.
 """
 
 from __future__ import annotations
