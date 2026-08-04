@@ -2,8 +2,11 @@
 
 This is the append-only ledger of **why** things changed. The PRD and
 `ARCHITECTURE.md` describe the current state (the "SQL views"); each record here
-is the immutable, dated account of a decision that changed it (the "event log").
-It is the doc-level twin of the product's own append-only supersession model.
+is the dated account of a decision that changed it (the "event log"). It is the
+doc-level twin of the product's own append-only supersession model, down to where
+the append-only property starts: a record is a draft until it merges to `main`,
+and immutable from that point on. Corrections after that supersede, they never
+overwrite. See [How](#how).
 
 ## When to write one
 
