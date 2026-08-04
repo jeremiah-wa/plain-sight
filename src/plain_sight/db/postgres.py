@@ -14,7 +14,7 @@ from uuid import UUID
 import psycopg
 from psycopg.types.json import Jsonb
 
-from plain_sight.db.repository import MemberInterest, VerifiedClaim
+from plain_sight.db.repository import MemberInterest, PendingClaim, VerifiedClaim
 from plain_sight.domain import (
     BBox,
     Counterparty,
@@ -88,6 +88,29 @@ class PostgresRepository:
             ),
         )
 
+    def get_source_document(self, document_id: UUID) -> SourceDocument | None:
+        row = self._conn.execute(
+            """
+            SELECT id, member_id, content_sha256, storage_path, page_count,
+                   source_url, fetched_at, jurisdiction
+            FROM source_document
+            WHERE id = %s
+            """,
+            (document_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return SourceDocument(
+            id=row[0],
+            member_id=row[1],
+            content_sha256=row[2],
+            storage_path=row[3],
+            page_count=row[4],
+            source_url=row[5],
+            fetched_at=row[6],
+            jurisdiction=row[7],
+        )
+
     def add_counterparty(self, counterparty: Counterparty) -> None:
         self._conn.execute(
             """
@@ -111,12 +134,14 @@ class PostgresRepository:
                  validity,
                  document_id, page, extraction_method, extraction_confidence,
                  fetch_timestamp, bbox,
-                 verification_status, verified_by, verified_at, ingested_at)
+                 verification_status, verified_by, verified_at, ingested_at,
+                 superseded_by, correction_reason)
             VALUES (%s, %s, %s, %s, %s,
                     daterange(%s, %s, '[)'),
                     %s, %s, %s, %s,
                     %s, %s,
-                    %s, %s, %s, %s)
+                    %s, %s, %s, %s,
+                    %s, %s)
             """,
             (
                 event.id,
@@ -136,8 +161,80 @@ class PostgresRepository:
                 event.verified_by,
                 event.verified_at,
                 event.ingested_at,
+                event.superseded_by,
+                event.correction_reason,
             ),
         )
+
+    def get_counterparty(self, counterparty_id: UUID) -> Counterparty | None:
+        row = self._conn.execute(
+            """
+            SELECT id, raw_string, normalised_label, resolved
+            FROM counterparty
+            WHERE id = %s
+            """,
+            (counterparty_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return Counterparty(id=row[0], raw_string=row[1], normalised_label=row[2], resolved=row[3])
+
+    def get_declaration_event(self, event_id: UUID) -> DeclarationEvent | None:
+        row = self._conn.execute(
+            f"""
+            SELECT {_EVENT_COLUMNS}
+            FROM declaration_event de
+            WHERE de.id = %s
+            """,
+            (event_id,),
+        ).fetchone()
+        return None if row is None else _event(row)
+
+    def supersede_event(self, original_event_id: UUID, successor: DeclarationEvent) -> bool:
+        """Append ``successor`` and stamp the original superseded, in one transaction.
+
+        The overlap-exclusion constraint (migration 0002) is partial on
+        ``superseded_by IS NULL`` and ``DEFERRABLE``: a correction usually overlaps
+        the validity of the version it corrects, so the check is deferred to commit,
+        by which point exactly one of the pair is active. The original is only
+        stamped if it is still a current (non-superseded) ``pending`` claim, so a
+        settled or already-superseded claim yields ``False`` and nothing is written.
+        """
+
+        self._conn.execute("SET CONSTRAINTS declaration_event_no_active_overlap DEFERRED")
+        marked = self._conn.execute(
+            """
+            UPDATE declaration_event
+            SET superseded_by = %s
+            WHERE id = %s
+              AND superseded_by IS NULL
+              AND verification_status = 'pending'
+            """,
+            (successor.id, original_event_id),
+        )
+        if marked.rowcount != 1:
+            return False
+        self.add_declaration_event(successor)
+        return True
+
+    def pending_claims_for_member(self, member_id: UUID) -> list[PendingClaim]:
+        rows = self._conn.execute(
+            f"""
+            SELECT {_EVENT_COLUMNS},
+                   c.raw_string, c.normalised_label, c.resolved,
+                   sd.id, sd.member_id, sd.content_sha256, sd.storage_path,
+                   sd.page_count, sd.source_url, sd.fetched_at, sd.jurisdiction
+            FROM declaration_event de
+            JOIN counterparty c ON c.id = de.counterparty_id
+            JOIN source_document sd ON sd.id = de.document_id
+            WHERE de.member_id = %s
+              AND de.verification_status = 'pending'
+              AND de.superseded_by IS NULL
+            ORDER BY de.ingested_at, de.id
+            """,
+            (member_id,),
+        ).fetchall()
+        return [(_event(row), _counterparty(row), _document(row)) for row in rows]
 
     def verify_event(self, event_id: UUID, *, verified_by: str, verified_at: datetime) -> bool:
         cursor = self._conn.execute(
@@ -154,12 +251,8 @@ class PostgresRepository:
 
     def verified_events_for_member(self, member_id: UUID) -> list[VerifiedClaim]:
         rows = self._conn.execute(
-            """
-            SELECT de.id, de.member_id, de.counterparty_id, de.category, de.description,
-                   lower(de.validity), upper(de.validity),
-                   de.document_id, de.page, de.extraction_method, de.extraction_confidence,
-                   de.fetch_timestamp, de.bbox,
-                   de.verification_status, de.verified_by, de.verified_at, de.ingested_at,
+            f"""
+            SELECT {_EVENT_COLUMNS},
                    c.raw_string, c.normalised_label, c.resolved
             FROM declaration_event de
             JOIN counterparty c ON c.id = de.counterparty_id
@@ -211,15 +304,31 @@ class PostgresRepository:
         return [(_event(row), _counterparty(row)) for row in rows]
 
 
-# Column list for the bitemporal views, in the exact positional order ``_event``
-# and ``_counterparty`` below expect. The views expose ``validity`` as a single
-# range; the row mappers want its bounds, so they are split out here.
+# The declaration_event columns, `de.`-qualified and in the exact positional order
+# ``_event`` expects. ``validity`` is stored as one range but the mapper wants its
+# bounds, so they are split out with lower()/upper(). Shared by every query that
+# reads events straight from the table (get/pending/verified) so the row shape is
+# defined once.
+_EVENT_COLUMNS = """
+    de.id, de.member_id, de.counterparty_id, de.category, de.description,
+    lower(de.validity), upper(de.validity),
+    de.document_id, de.page, de.extraction_method, de.extraction_confidence,
+    de.fetch_timestamp, de.bbox,
+    de.verification_status, de.verified_by, de.verified_at, de.ingested_at,
+    de.superseded_by, de.correction_reason
+"""
+
+# The same column shape as ``_EVENT_COLUMNS`` but unqualified, for reads from the
+# bitemporal *views* (which already flatten the join and rename the counterparty
+# columns). Kept positionally identical to ``_EVENT_COLUMNS`` so ``_event`` and
+# ``_counterparty`` map view rows and table rows the same way.
 _INTEREST_COLUMNS = """
     id, member_id, counterparty_id, category, description,
     lower(validity), upper(validity),
     document_id, page, extraction_method, extraction_confidence,
     fetch_timestamp, bbox,
     verification_status, verified_by, verified_at, ingested_at,
+    superseded_by, correction_reason,
     counterparty_raw_string, counterparty_normalised_label, counterparty_resolved
 """
 
@@ -257,11 +366,26 @@ def _event(row: tuple[Any, ...]) -> DeclarationEvent:
         verified_by=row[14],
         verified_at=row[15],
         ingested_at=row[16],
+        superseded_by=row[17],
+        correction_reason=row[18],
     )
 
 
 def _counterparty(row: tuple[Any, ...]) -> Counterparty:
-    return Counterparty(id=row[2], raw_string=row[17], normalised_label=row[18], resolved=row[19])
+    return Counterparty(id=row[2], raw_string=row[19], normalised_label=row[20], resolved=row[21])
+
+
+def _document(row: tuple[Any, ...]) -> SourceDocument:
+    return SourceDocument(
+        id=row[22],
+        member_id=row[23],
+        content_sha256=row[24],
+        storage_path=row[25],
+        page_count=row[26],
+        source_url=row[27],
+        fetched_at=row[28],
+        jurisdiction=row[29],
+    )
 
 
 def _bbox(value: list[float] | None) -> BBox | None:

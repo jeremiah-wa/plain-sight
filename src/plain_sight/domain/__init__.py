@@ -5,6 +5,7 @@ from __future__ import annotations
 from plain_sight.domain.models import (
     BBox,
     CandidateDeclaration,
+    ClaimCorrection,
     Counterparty,
     DeclarationEvent,
     ExtractionResult,
@@ -18,6 +19,7 @@ from plain_sight.domain.models import (
 __all__ = [
     "BBox",
     "CandidateDeclaration",
+    "ClaimCorrection",
     "Counterparty",
     "DeclarationEvent",
     "ExtractionResult",

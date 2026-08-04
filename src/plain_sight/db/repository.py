@@ -25,6 +25,10 @@ VerifiedClaim = tuple[DeclarationEvent, Counterparty]
 #: verification status.
 MemberInterest = tuple[DeclarationEvent, Counterparty]
 
+#: A pending claim as the verification UI needs it: the event, the counterparty it
+#: names, and the source document whose scan is shown beside the extracted fields.
+PendingClaim = tuple[DeclarationEvent, Counterparty, SourceDocument]
+
 
 class Repository(Protocol):
     """Persistence operations for the walking skeleton."""
@@ -35,9 +39,43 @@ class Repository(Protocol):
 
     def add_source_document(self, document: SourceDocument) -> None: ...
 
+    def get_source_document(self, document_id: UUID) -> SourceDocument | None:
+        """Return one source document by id, or ``None`` if absent.
+
+        The verification UI needs it to render the scan a claim was read from,
+        given only the claim's provenance ``document_id``.
+        """
+        ...
+
     def add_counterparty(self, counterparty: Counterparty) -> None: ...
 
+    def get_counterparty(self, counterparty_id: UUID) -> Counterparty | None: ...
+
     def add_declaration_event(self, event: DeclarationEvent) -> None: ...
+
+    def get_declaration_event(self, event_id: UUID) -> DeclarationEvent | None:
+        """Return one declaration event by id, or ``None`` if absent."""
+        ...
+
+    def supersede_event(self, original_event_id: UUID, successor: DeclarationEvent) -> bool:
+        """Append ``successor`` and mark the original superseded, atomically.
+
+        The append-only correction path: the ``successor`` (a new event carrying
+        the corrected values and its own verification metadata) is inserted, and
+        the original is stamped ``superseded_by = successor.id``. The original is
+        retained and never otherwise mutated. Returns ``True`` if the original was
+        a current (non-superseded) ``pending`` claim, ``False`` otherwise.
+        """
+        ...
+
+    def pending_claims_for_member(self, member_id: UUID) -> list[PendingClaim]:
+        """Return the member's open (``pending``, non-superseded) claims, oldest first.
+
+        This is the verification queue behind the UI: each claim is paired with its
+        counterparty and the source document whose scan crop the operator checks it
+        against. Settled (verified or superseded) claims are absent.
+        """
+        ...
 
     def verify_event(self, event_id: UUID, *, verified_by: str, verified_at: datetime) -> bool:
         """Transition a ``pending`` claim to ``verified``.

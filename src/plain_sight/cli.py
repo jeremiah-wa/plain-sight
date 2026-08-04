@@ -133,3 +133,27 @@ def show(member: str) -> None:
     settings = get_settings()
     with open_session(settings) as repo:
         click.echo(service.render_member_interests(repo=repo, member_name=member))
+
+
+@cli.command()
+@click.option("--host", default="127.0.0.1", help="Bind address (localhost only by default).")
+@click.option("--port", default=8000, type=int, help="Port to serve on.")
+@click.option("--operator", default="operator", help="Identity stamped as verified_by.")
+def serve(host: str, port: int, operator: str) -> None:
+    """Run the local, operator-only verification UI (FastAPI + HTMX).
+
+    Opens one Postgres transaction per request through ``open_session``. Bind stays
+    on localhost by default: this is an operator tool with no public-facing surface.
+    """
+
+    import uvicorn
+
+    from plain_sight.web import create_app
+
+    settings = get_settings()
+    _require_database_url(settings)
+    app = create_app(
+        session_factory=lambda: open_session(settings),
+        operator=operator,
+    )
+    uvicorn.run(app, host=host, port=port)

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ member_name }}, pending claims{% endblock %}
+{% block content %}
+  <h1>{{ member_name }}</h1>
+  {% if not known %}
+    <p class="muted">No member found with that canonical name.</p>
+  {% elif not claims %}
+    <p class="muted">No pending claims. Everything for this member is settled.</p>
+  {% else %}
+    <p class="muted">{{ claims | length }} pending claim(s) awaiting verification.</p>
+    <ul class="queue">
+      {% for event, counterparty, document in claims %}
+        <li>
+          <a href="/members/{{ member_name | urlencode }}/claims/{{ event.id }}">
+            {{ counterparty.raw_string }} &mdash; {{ event.category.value }}
+          </a>
+          <div class="muted">
+            page {{ event.provenance.page }},
+            confidence {{ "%.0f%%" | format(event.provenance.extraction_confidence * 100) }}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

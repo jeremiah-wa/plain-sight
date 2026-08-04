@@ -165,3 +165,32 @@ class DeclarationEvent(BaseModel):
     verified_by: str | None = None
     verified_at: datetime | None = None
     ingested_at: datetime
+    # Supersession pointer (see docs/GLOSSARY.md): ``None`` means this is the
+    # current version of the record; a non-``None`` id points at the successor
+    # event that replaced it. A correction appends a successor and stamps this on
+    # the prior version, which is retained (never deleted) and drops out of the
+    # reconstructed-state views.
+    superseded_by: UUID | None = None
+    # Why a correction was made, captured on the *superseding* event so the log
+    # carries who/why/when. ``None`` on machine candidates and confirmed-as-is
+    # events, which correct nothing.
+    correction_reason: str | None = None
+
+
+class ClaimCorrection(BaseModel):
+    """The operator's corrected field values for one claim, at the UI boundary.
+
+    The verification form submits the whole field set (the values it displayed,
+    with edits applied), so there is no "unchanged vs cleared" ambiguity: these
+    are the complete values the superseding event should carry. The counterparty
+    is submitted as a raw string; :func:`~plain_sight.service.correct` turns a
+    changed string into a new first-class counterparty referenced by UUID.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    category: InterestCategory
+    counterparty_raw: str = Field(min_length=1)
+    description: str | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
