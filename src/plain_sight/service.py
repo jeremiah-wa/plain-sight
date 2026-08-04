@@ -11,8 +11,9 @@ from collections.abc import Callable
 from datetime import date, datetime
 from uuid import UUID, uuid4
 
-from plain_sight.db.repository import Repository
-from plain_sight.domain import DeclarationEvent, Person
+from plain_sight.db.repository import Repository, SimilarInterest
+from plain_sight.domain import DeclarationEvent, InterestCategory, Person
+from plain_sight.embedding import EmbeddingProvider
 from plain_sight.extraction import Extractor, map_candidates
 from plain_sight.sources import DocumentStore
 
@@ -26,12 +27,18 @@ def ingest(
     pdf_bytes: bytes,
     now: datetime,
     source_url: str | None = None,
+    embedder: EmbeddingProvider | None = None,
     id_factory: Callable[[], UUID] = uuid4,
 ) -> list[DeclarationEvent]:
     """Store the PDF, extract candidates, and persist them as pending claims.
 
     Returns the created declaration events (all ``pending``) so the caller can
     surface their ids for the crude confirm step.
+
+    If an ``embedder`` is supplied, each newly declared counterparty is embedded
+    from its normalised label so it carries a retrieval vector for later
+    query-time similarity. The embedding is an additive retrieval aid: it never
+    changes the counterparty's stable UUID and asserts nothing about its identity.
     """
 
     person = repo.get_person_by_canonical_name(member_name)
@@ -55,6 +62,10 @@ def ingest(
 
     for counterparty in counterparties:
         repo.add_counterparty(counterparty)
+        if embedder is not None:
+            repo.set_counterparty_embedding(
+                counterparty.id, embedder.embed(counterparty.normalised_label)
+            )
     for event in events:
         repo.add_declaration_event(event)
 
@@ -71,6 +82,26 @@ def confirm(
     """Transition one claim from ``pending`` to ``verified``."""
 
     return repo.verify_event(event_id, verified_by=verified_by, verified_at=verified_at)
+
+
+def find_similar_interests(
+    *,
+    repo: Repository,
+    embedder: EmbeddingProvider,
+    query: str,
+    category: InterestCategory | None = None,
+    as_of: date | None = None,
+) -> list[SimilarInterest]:
+    """Find declared interests whose counterparty is semantically near ``query``.
+
+    Embeds the query string through the same seam counterparties were embedded
+    with, then asks the repository for the nearest interests, optionally narrowed
+    by category (structured) and an as-of date (temporal). Results are cited
+    records ordered nearest-first; nothing is resolved to a legal identity.
+    """
+
+    query_embedding = embedder.embed(query)
+    return repo.similar_counterparty_interests(query_embedding, category=category, as_of=as_of)
 
 
 def render_member_interests(*, repo: Repository, member_name: str) -> str:

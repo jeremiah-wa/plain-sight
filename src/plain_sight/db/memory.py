@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import math
+from collections.abc import Sequence
+from datetime import date, datetime
 from uuid import UUID
 
-from plain_sight.db.repository import VerifiedClaim
+from plain_sight.db.repository import SimilarInterest, VerifiedClaim
 from plain_sight.domain import (
     Counterparty,
     DeclarationEvent,
+    InterestCategory,
     Person,
     SourceDocument,
     VerificationStatus,
@@ -22,6 +25,7 @@ class InMemoryRepository:
         self._people: dict[UUID, Person] = {}
         self._documents: dict[UUID, SourceDocument] = {}
         self._counterparties: dict[UUID, Counterparty] = {}
+        self._embeddings: dict[UUID, list[float]] = {}
         self._events: dict[UUID, DeclarationEvent] = {}
 
     def add_person(self, person: Person) -> None:
@@ -64,3 +68,51 @@ class InMemoryRepository:
         ]
         claims.sort(key=lambda claim: (claim[0].ingested_at, claim[0].id))
         return claims
+
+    def set_counterparty_embedding(self, counterparty_id: UUID, embedding: Sequence[float]) -> None:
+        self._embeddings[counterparty_id] = [float(value) for value in embedding]
+
+    def similar_counterparty_interests(
+        self,
+        query_embedding: Sequence[float],
+        *,
+        category: InterestCategory | None = None,
+        as_of: date | None = None,
+    ) -> list[SimilarInterest]:
+        query = [float(value) for value in query_embedding]
+        results: list[SimilarInterest] = []
+        for event in self._events.values():
+            embedding = self._embeddings.get(event.counterparty_id)
+            if embedding is None:
+                continue
+            if category is not None and event.category is not category:
+                continue
+            if as_of is not None and not _validity_contains(
+                event.valid_from, event.valid_to, as_of
+            ):
+                continue
+            distance = _cosine_distance(query, embedding)
+            results.append((event, self._counterparties[event.counterparty_id], distance))
+        results.sort(key=lambda item: (item[2], item[0].ingested_at, item[0].id))
+        return results
+
+
+def _validity_contains(valid_from: date | None, valid_to: date | None, as_of: date) -> bool:
+    """Half-open ``[valid_from, valid_to)`` containment, mirroring ``daterange @>``."""
+
+    if valid_from is not None and as_of < valid_from:
+        return False
+    if valid_to is not None and as_of >= valid_to:
+        return False
+    return True
+
+
+def _cosine_distance(a: Sequence[float], b: Sequence[float]) -> float:
+    """Cosine distance ``1 - cos(a, b)``, matching pgvector's ``<=>`` operator."""
+
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 1.0
+    return 1.0 - dot / (norm_a * norm_b)

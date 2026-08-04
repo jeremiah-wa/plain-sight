@@ -9,11 +9,18 @@ implementation is checked against the same contract under the ``postgres`` mark.
 
 from __future__ import annotations
 
-from datetime import datetime
+from collections.abc import Sequence
+from datetime import date, datetime
 from typing import Protocol
 from uuid import UUID
 
-from plain_sight.domain import Counterparty, DeclarationEvent, Person, SourceDocument
+from plain_sight.domain import (
+    Counterparty,
+    DeclarationEvent,
+    InterestCategory,
+    Person,
+    SourceDocument,
+)
 
 #: A verified claim paired with the counterparty it was declared against.
 VerifiedClaim = tuple[DeclarationEvent, Counterparty]
@@ -24,6 +31,12 @@ VerifiedClaim = tuple[DeclarationEvent, Counterparty]
 #: return are the current (non-superseded) versions of the record, whatever their
 #: verification status.
 MemberInterest = tuple[DeclarationEvent, Counterparty]
+
+#: A declaration event, the counterparty it names, and that counterparty's cosine
+#: distance from the query vector (smaller is nearer). The result unit of a
+#: query-time similarity search. The distance is carried alongside so callers can
+#: rank and threshold; it is a retrieval score, never an assertion of identity.
+SimilarInterest = tuple[DeclarationEvent, Counterparty, float]
 
 
 class Repository(Protocol):
@@ -52,5 +65,33 @@ class Repository(Protocol):
 
         This is the single query behind the text display; the verified-only
         filter lives here so nothing ``pending`` can reach the reader.
+        """
+        ...
+
+    def set_counterparty_embedding(self, counterparty_id: UUID, embedding: Sequence[float]) -> None:
+        """Attach (or replace) a counterparty's retrieval embedding.
+
+        The embedding is infrastructure for query-time similarity, not a domain
+        fact: it lives beside the counterparty, never on the immutable claim, and
+        setting it asserts nothing about the counterparty's legal identity.
+        """
+        ...
+
+    def similar_counterparty_interests(
+        self,
+        query_embedding: Sequence[float],
+        *,
+        category: InterestCategory | None = None,
+        as_of: date | None = None,
+    ) -> list[SimilarInterest]:
+        """Rank interests by how near their counterparty is to ``query_embedding``.
+
+        Query-time semantic retrieval, no materialised clusters: every current
+        (non-superseded) interest whose counterparty carries an embedding is
+        scored by cosine distance and returned nearest-first. The optional
+        ``category`` (structured) and ``as_of`` (temporal, valid-time) filters
+        compose *with* the ranking in one pass, they do not bypass it. Results are
+        cited records (each event keeps its provenance and its provisional
+        counterparty); nothing is resolved to a legal identity.
         """
         ...

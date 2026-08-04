@@ -7,6 +7,7 @@ so the tests can assert it without an ORM obscuring it.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 from uuid import UUID
@@ -14,7 +15,7 @@ from uuid import UUID
 import psycopg
 from psycopg.types.json import Jsonb
 
-from plain_sight.db.repository import MemberInterest, VerifiedClaim
+from plain_sight.db.repository import MemberInterest, SimilarInterest, VerifiedClaim
 from plain_sight.domain import (
     BBox,
     Counterparty,
@@ -25,6 +26,11 @@ from plain_sight.domain import (
     SourceDocument,
     VerificationStatus,
 )
+
+#: Dimensionality of a counterparty embedding. Must match the ``vector(...)``
+#: width declared in migration ``0004_counterparty_embedding.sql``. Fixed here so
+#: the embedding provider seam and the schema agree on one number.
+EMBEDDING_DIMENSIONS = 1536
 
 
 class PostgresRepository:
@@ -210,6 +216,66 @@ class PostgresRepository:
         ).fetchall()
         return [(_event(row), _counterparty(row)) for row in rows]
 
+    def set_counterparty_embedding(self, counterparty_id: UUID, embedding: Sequence[float]) -> None:
+        """Store a counterparty's embedding as a pgvector value.
+
+        The vector is passed as its pgvector text literal (``[a,b,c]``) and cast,
+        so no extra type adapter has to be registered on the connection.
+        """
+
+        self._conn.execute(
+            "UPDATE counterparty SET embedding = %s::vector WHERE id = %s",
+            (_vector_literal(embedding), counterparty_id),
+        )
+
+    def similar_counterparty_interests(
+        self,
+        query_embedding: Sequence[float],
+        *,
+        category: InterestCategory | None = None,
+        as_of: date | None = None,
+    ) -> list[SimilarInterest]:
+        """Query-time cosine-similarity ranking, composed with the given filters.
+
+        One SQL statement joins each current (non-superseded) interest to its
+        counterparty, keeps only counterparties that carry an embedding, and
+        orders by cosine distance (``<=>``) to ``query_embedding``. The structured
+        (``category``) and temporal (``as_of``, valid-time containment) filters are
+        appended as ``WHERE`` predicates, so they narrow the same ranked set
+        rather than replacing the ranking. Nearest first.
+        """
+
+        # The distance expression carries the first bound parameter because it
+        # appears first in the statement (in the SELECT list); the optional filter
+        # parameters follow in the order their placeholders appear.
+        conditions = ["de.superseded_by IS NULL", "c.embedding IS NOT NULL"]
+        params: list[Any] = [_vector_literal(query_embedding)]
+        if category is not None:
+            conditions.append("de.category = %s")
+            params.append(category.value)
+        if as_of is not None:
+            conditions.append("de.validity @> %s::date")
+            params.append(as_of)
+
+        where = " AND ".join(conditions)
+        rows = self._conn.execute(
+            f"""
+            SELECT de.id, de.member_id, de.counterparty_id, de.category, de.description,
+                   lower(de.validity), upper(de.validity),
+                   de.document_id, de.page, de.extraction_method, de.extraction_confidence,
+                   de.fetch_timestamp, de.bbox,
+                   de.verification_status, de.verified_by, de.verified_at, de.ingested_at,
+                   c.raw_string, c.normalised_label, c.resolved,
+                   (c.embedding <=> %s::vector) AS distance
+            FROM declaration_event de
+            JOIN counterparty c ON c.id = de.counterparty_id
+            WHERE {where}
+            ORDER BY distance ASC, de.ingested_at, de.id
+            """,
+            params,
+        ).fetchall()
+        return [(_event(row), _counterparty(row), float(row[20])) for row in rows]
+
 
 # Column list for the bitemporal views, in the exact positional order ``_event``
 # and ``_counterparty`` below expect. The views expose ``validity`` as a single
@@ -269,3 +335,9 @@ def _bbox(value: list[float] | None) -> BBox | None:
         return None
     x0, y0, x1, y1 = value
     return (x0, y0, x1, y1)
+
+
+def _vector_literal(embedding: Sequence[float]) -> str:
+    """Render a float sequence as a pgvector text literal, e.g. ``[1.0,0.0,2.5]``."""
+
+    return "[" + ",".join(repr(float(value)) for value in embedding) + "]"
