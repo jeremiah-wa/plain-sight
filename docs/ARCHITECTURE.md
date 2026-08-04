@@ -202,13 +202,14 @@ Key modelling decisions:
 
 ### Skeleton vs v1 target
 
-The migrations (`0001_walking_skeleton.sql`, then `0002_temporal_integrity.sql`, then `0003_bitemporal_query_views.sql`) start minimal and grow toward the full v1 target **without re-modelling the core**:
+The migrations (`0001_walking_skeleton.sql`, then `0002_temporal_integrity.sql`, then `0003_bitemporal_query_views.sql`, then `0004_change_history_view.sql`) start minimal and grow toward the full v1 target **without re-modelling the core**:
 
 | Concern | Skeleton (today) | v1 target |
 |---|---|---|
 | Valid time | ✅ half-open `daterange` (`validity`) with `EXCLUDE USING GIST` preventing overlapping validity per active `(member, counterparty, category)` (migration 0002) | `tstzrange` record axis added when system-time "as of" views exist |
 | Corrections | `superseded_by` supersession pointer in place; deferrable constraint lets a correction append + supersede atomically (migration 0002) | full append-only **supersession** workflow + corrections ledger |
 | "State as of date D" | ✅ SQL **views** over the event log (`current_interest`, `active_interest`), sliced by valid time; supersession honoured, no stored snapshots (migration 0003) | `tstzrange` record-axis travel ("as the record stood at T") added alongside the record range |
+| Change history (timeline) | ✅ SQL **view** over the event log (`member_change_history`): a member's acquire/divest/correct timeline, both time axes surfaced per row; superseded events retained and marked, not dropped (migration 0004) | corrections ledger + diff-style rendering of what each supersession changed |
 | Counterparty similarity | not yet | **pgvector** embedding + similarity at query time (no materialised clusters) |
 | Family members | not modelled | `Person` entities + private household→member edge; public display is role-based signal only |
 
