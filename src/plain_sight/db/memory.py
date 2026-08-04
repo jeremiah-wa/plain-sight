@@ -36,6 +36,17 @@ class InMemoryRepository:
     def add_source_document(self, document: SourceDocument) -> None:
         self._documents[document.id] = document
 
+    def latest_document_for_member(self, member_id: UUID) -> SourceDocument | None:
+        documents = [
+            (index, document)
+            for index, document in enumerate(self._documents.values())
+            if document.member_id == member_id
+        ]
+        if not documents:
+            return None
+        # Newest by fetch time; insertion order breaks ties deterministically.
+        return max(documents, key=lambda item: (item[1].fetched_at, item[0]))[1]
+
     def add_counterparty(self, counterparty: Counterparty) -> None:
         self._counterparties[counterparty.id] = counterparty
 

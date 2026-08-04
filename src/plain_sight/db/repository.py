@@ -35,6 +35,16 @@ class Repository(Protocol):
 
     def add_source_document(self, document: SourceDocument) -> None: ...
 
+    def latest_document_for_member(self, member_id: UUID) -> SourceDocument | None:
+        """The most recently fetched source document stored for a member, if any.
+
+        This is the "previous state" side of the change-detection seam: a poll
+        fingerprints the freshly fetched PDF and compares it against the document
+        already on record here. ``None`` means the member has never been ingested,
+        so the new document is a first sighting.
+        """
+        ...
+
     def add_counterparty(self, counterparty: Counterparty) -> None: ...
 
     def add_declaration_event(self, event: DeclarationEvent) -> None: ...

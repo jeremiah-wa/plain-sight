@@ -9,7 +9,7 @@ it skips if that is not up. The test drives the pipeline through the
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -19,7 +19,13 @@ import pytest
 
 from plain_sight import service
 from plain_sight.db import PostgresRepository
-from plain_sight.domain import CandidateDeclaration, ExtractionResult, InterestCategory
+from plain_sight.domain import (
+    CandidateDeclaration,
+    ExtractionResult,
+    InterestCategory,
+    Person,
+    SourceDocument,
+)
 from plain_sight.extraction import StubExtractor
 from plain_sight.sources import DocumentStore
 
@@ -87,3 +93,45 @@ def test_postgres_pipeline_displays_only_verified(
     rendered = service.render_member_interests(repo=repo, member_name="Jane Member")
     assert 'as declared: "BHP Group Ltd"' in rendered
     assert "Acme Trust" not in rendered
+
+
+def test_latest_document_for_member_reads_the_change_detection_baseline(
+    postgres_conn: psycopg.Connection[Any],
+    id_factory: Callable[[], UUID],
+) -> None:
+    """The poll's "previous state" round-trips through raw SQL: newest fetch wins."""
+
+    conn = postgres_conn
+    repo = PostgresRepository(conn)
+    member_id = id_factory()
+
+    with conn.transaction():
+        # No document yet: the member is a first sighting.
+        assert repo.latest_document_for_member(member_id) is None
+
+        repo.add_person(Person(id=member_id, canonical_name="Jane Member"))
+        older = SourceDocument(
+            id=id_factory(),
+            member_id=member_id,
+            content_sha256="a" * 64,
+            storage_path="/store/a.pdf",
+            page_count=1,
+            fetched_at=NOW,
+        )
+        newer = SourceDocument(
+            id=id_factory(),
+            member_id=member_id,
+            content_sha256="b" * 64,
+            storage_path="/store/b.pdf",
+            page_count=2,
+            fetched_at=NOW + timedelta(days=1),
+        )
+        # Insert out of fetch order to prove ordering is by fetched_at, not insertion.
+        repo.add_source_document(newer)
+        repo.add_source_document(older)
+
+    latest = repo.latest_document_for_member(member_id)
+    assert latest is not None
+    assert latest.id == newer.id
+    assert latest.content_sha256 == "b" * 64
+    assert latest.page_count == 2
