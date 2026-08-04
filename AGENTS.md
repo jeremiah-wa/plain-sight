@@ -66,7 +66,7 @@ The seam vocabulary (`sources`, `extraction`, `db`, `publish`, `domain`, `servic
 - **Commits.** Conventional Commits with a seam scope: `feat(extraction): map handwriting confidence onto candidates (#23)`. Omit the scope for genuinely cross-cutting changes (`refactor:`, `chore:`).
 - **Branches.** `<type>/<issue#>-<slug>`, e.g. `feat/23-publish-gate`. A bare `<type>/<slug>` is allowed for issue-less chores.
 - **Pull requests.** Fill `.github/PULL_REQUEST_TEMPLATE.md`. It carries only the **handover delta** — what the reviewer cannot get from the diff, this file, or the linked issue. Do not restate standing rules; link them.
-- **Decisions (ADRs).** A change that **reverses or materially alters** a product invariant or a PRD/architecture commitment gets a MADR record in `docs/decisions/` **plus** an edit to the canonical doc, which links back to the ADR. Pure additions and clarifications are just doc edits. ADRs are append-only: never edit an accepted one, supersede it with a new one and set `Superseded by`.
+- **Decisions (ADRs).** A change that **reverses or materially alters** a product invariant or a PRD/architecture commitment gets a MADR record in `docs/decisions/` **plus** an edit to the canonical doc, which links back to the ADR. Pure additions and clarifications are just doc edits. ADRs are immutable **once merged to `main`**: to change one after that, supersede it with a new record and set `Superseded by`. Before it lands on `main` it is a draft on its own branch, so edit it freely there, `Status` included.
 
 ## Reviewing
 
